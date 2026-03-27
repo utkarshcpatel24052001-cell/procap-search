@@ -1,7 +1,5 @@
-# BACPOP Project Documentation
 
-## Overview
-BACPOP is a comprehensive project designed to simplify the process of managing business analytics and customer preferences effectively. This documentation provides a detailed insight into the project's structure, functionalities, and usage.
+
 
 ## Features
 - User-friendly interface
