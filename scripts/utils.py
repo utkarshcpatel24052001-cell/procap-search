@@ -7,8 +7,15 @@ import logging
 from pathlib import Path
 import numpy as np
 from Bio.PDB import PDBParser as BioPDBParser
-from Bio.PDB.Polypeptide import three_to_one
 from scipy.spatial.distance import cdist
+
+# Standard amino acid mapping
+THREE_TO_ONE = {
+    'ALA': 'A', 'ARG': 'R', 'ASN': 'N', 'ASP': 'D', 'CYS': 'C',
+    'GLN': 'Q', 'GLU': 'E', 'GLY': 'G', 'HIS': 'H', 'ILE': 'I',
+    'LEU': 'L', 'LYS': 'K', 'MET': 'M', 'PHE': 'F', 'PRO': 'P',
+    'SER': 'S', 'THR': 'T', 'TRP': 'W', 'TYR': 'Y', 'VAL': 'V'
+}
 
 # Configure logging
 def setup_logger(name, log_file=None, level=logging.INFO):
@@ -90,8 +97,8 @@ class PDBParser:
             chain = model[chain_id]
             for residue in chain:
                 residue_name = residue.get_resname()
-                if residue_name in three_to_one:
-                    sequence.append(three_to_one[residue_name])
+                if residue_name in THREE_TO_ONE:
+                    sequence.append(THREE_TO_ONE[residue_name])
                 else:
                     sequence.append('X')
             
