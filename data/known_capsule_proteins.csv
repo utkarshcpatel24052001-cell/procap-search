@@ -1,0 +1,24 @@
+PDB_ID,Organism,Gene_Name,Function,Protein_Family,Structure_Type
+1R3F,Streptococcus pneumoniae,cpsF,Capsule synthase,Polysaccharide_synthase,Alpha-helical
+1R3G,Streptococcus pneumoniae,cpsG,Glycosyltransferase,Glycotransferase_A,Alpha-helical
+1R3H,Streptococcus pneumoniae,cpsH,Sugar epimerase,Epimerase,NAD-binding
+1QFE,Streptococcus pneumoniae,rmlC,dTDP-L-rhamnose synthase,dTDP_sugar_synthase,NAD-binding
+1S24,Streptococcus pneumoniae,rmlB,dTDP-D-glucose 4-dehydrogenase,Oxidoreductase,NAD-binding
+2FJQ,Pseudomonas aeruginosa,wbpM,O-antigen biosynthesis,Glycotransferase_B,Alpha-helical
+3FXN,Pseudomonas aeruginosa,wbpP,Sugar transferase,Glycotransferase_A,Alpha-helical
+4NAY,Pseudomonas aeruginosa,wbpL,Epimerase,Epimerase,NAD-binding
+4NAZ,Pseudomonas aeruginosa,wbpN,Phosphatase,Phosphatase,Metal-dependent
+4NB0,Pseudomonas aeruginosa,wbpO,Ligase,Ligase,Metal-dependent
+3A1I,Salmonella enterica,rfbG,UDP-galactose 4-epimerase,Epimerase,NAD-binding
+3A1J,Salmonella enterica,rfbH,Glycosyltransferase,Glycotransferase_A,Alpha-helical
+3A1K,Salmonella enterica,rfbI,Glycosyltransferase,Glycotransferase_B,Alpha-helical
+1W0L,Salmonella enterica,rfbJ,Sugar epimerase,Epimerase,NAD-binding
+1W0M,Salmonella enterica,rfbK,Transferase,Glycotransferase_A,Alpha-helical
+2IK5,Neisseria meningitidis,cssA,Capsule synthase,Polysaccharide_synthase,Alpha-helical
+2IK6,Neisseria meningitidis,cssB,Glycosyltransferase,Glycotransferase_A,Alpha-helical
+2IK7,Neisseria meningitidis,cssC,Sugar epimerase,Epimerase,NAD-binding
+1QW2,Neisseria meningitidis,cssD,Synthase,Polysaccharide_synthase,Alpha-helical
+1G0K,Escherichia coli,rkpM,Capsule synthesis,Glycotransferase_A,Alpha-helical
+1G0L,Escherichia coli,rkpN,Sugar transferase,Glycotransferase_B,Alpha-helical
+1G0M,Escherichia coli,rkpO,Epimerase,Epimerase,NAD-binding
+1H8G,Escherichia coli,rkpP,Synthase,Polysaccharide_synthase,Alpha-helical
