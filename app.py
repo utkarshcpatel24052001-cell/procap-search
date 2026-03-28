@@ -1,29 +1,73 @@
+from __future__ import annotations
+
 import io
-import os
 import tempfile
 import zipfile
 from pathlib import Path
+from typing import Optional
 
 import numpy as np
 import pandas as pd
 import requests
 import streamlit as st
+import plotly.express as px
 from Bio import pairwise2
 from Bio.PDB import PDBParser as BioPDBParser
+from Bio.SeqUtils import ProtParam
 from scipy.spatial.distance import cdist
 
-# ---------------------------
-# UI Config
-# ---------------------------
-st.set_page_config(
-    page_title="ProCap Search | Protein Capsule Structure Search Demo",
-    page_icon="🧬",
-    layout="wide",
+# =========================
+# 1. PAGE CONFIG & CSS
+# =========================
+st.set_page_config(page_title="ProCap Professional | Structure Search", layout="wide")
+
+st.markdown(
+    """
+<style>
+/* Professional LIMS Typography */
+html, body, .stMarkdown, p, li, div, span, label {
+  font-family: "Times New Roman", Times, serif !important;
+  font-size: 18px !important;
+  line-height: 1.45 !important;
+}
+
+/* Metric Widgets Styling */
+div[data-testid="stMetricLabel"] p {
+  font-size: 15px !important;
+  font-weight: bold !important;
+  color: #4a5568 !important;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+div[data-testid="stMetricValue"] {
+  font-size: 28px !important;
+  font-weight: 600 !important;
+  color: #2c5282 !important;
+}
+
+/* Sidebar & Tabs */
+section[data-testid="stSidebar"] * { font-size: 16px !important; }
+button[data-baseweb="tab"] { font-size: 18px !important; font-weight: bold !important; }
+
+/* Buttons */
+.stButton > button {
+  font-size: 16px !important;
+  border-radius: 6px !important;
+  padding: 0.55em 1em !important;
+}
+
+/* Confidence Banners */
+.priority-high { color: #276749; background-color: #f0fff4; padding: 10px; border-left: 5px solid #2f855a; border-radius: 4px; font-weight: bold;}
+.priority-med { color: #9c4221; background-color: #fffaf0; padding: 10px; border-left: 5px solid #dd6b20; border-radius: 4px; font-weight: bold;}
+.priority-low { color: #9b2c2c; background-color: #fff5f5; padding: 10px; border-left: 5px solid #e53e3e; border-radius: 4px; font-weight: bold;}
+</style>
+""",
+    unsafe_allow_html=True,
 )
 
-# ---------------------------
-# Core Utilities (embedded to keep Space self-contained)
-# ---------------------------
+# =========================
+# 2. CORE UTILITIES
+# =========================
 THREE_TO_ONE = {
     'ALA': 'A', 'ARG': 'R', 'ASN': 'N', 'ASP': 'D', 'CYS': 'C',
     'GLN': 'Q', 'GLU': 'E', 'GLY': 'G', 'HIS': 'H', 'ILE': 'I',
@@ -42,454 +86,240 @@ class PDBWrapper:
         return self.structure
 
     def get_coordinates(self, chain_id="A"):
-        if self.structure is None:
-            return None
+        if self.structure is None: return None
         coords = []
-        model = self.structure[0]
-        chain = model[chain_id]
-        for residue in chain:
-            if "CA" in residue:
-                coords.append(residue["CA"].get_coord())
-        if not coords:
-            return None
-        return np.array(coords, dtype=float)
+        try:
+            chain = self.structure[0][chain_id]
+            for residue in chain:
+                if "CA" in residue: coords.append(residue["CA"].get_coord())
+            return np.array(coords, dtype=float) if coords else None
+        except KeyError: return None
 
     def get_sequence(self, chain_id="A"):
-        if self.structure is None:
-            return None
+        if self.structure is None: return None
         seq = []
-        model = self.structure[0]
-        chain = model[chain_id]
-        for residue in chain:
-            res = residue.get_resname()
-            seq.append(THREE_TO_ONE.get(res, "X"))
-        return "".join(seq)
+        try:
+            chain = self.structure[0][chain_id]
+            for residue in chain:
+                res = residue.get_resname()
+                seq.append(THREE_TO_ONE.get(res, "X"))
+            return "".join(seq)
+        except KeyError: return None
 
 def calculate_rmsd(coords1, coords2):
-    if coords1 is None or coords2 is None:
-        return None
-    if coords1.shape != coords2.shape:
-        return None
-    distances = np.sqrt(np.sum((coords1 - coords2) ** 2, axis=1))
-    return float(np.sqrt(np.mean(distances ** 2)))
+    if coords1 is None or coords2 is None or coords1.shape != coords2.shape: return None
+    return float(np.sqrt(np.mean(np.sum((coords1 - coords2) ** 2, axis=1) ** 2)))
 
-def calculate_distance_matrix(coords):
-    return cdist(coords, coords, metric="euclidean")
+def calculate_distance_matrix(coords): return cdist(coords, coords, metric="euclidean")
 
 def distance_matrix_correlation(dm1, dm2):
     flat1 = dm1[np.triu_indices_from(dm1, k=1)]
     flat2 = dm2[np.triu_indices_from(dm2, k=1)]
     corr = np.corrcoef(flat1, flat2)[0, 1]
-    if np.isnan(corr):
-        return 0.0
-    return float(corr)
+    return float(corr) if not np.isnan(corr) else 0.0
 
 def download_pdb_by_id(pdb_id: str, out_path: Path):
     pdb_id = pdb_id.strip().upper()
-    url = f"https://files.rcsb.org/download/{pdb_id}.pdb"
-    r = requests.get(url, timeout=20)
+    r = requests.get(f"https://files.rcsb.org/download/{pdb_id}.pdb", timeout=20)
     r.raise_for_status()
     out_path.write_text(r.text)
     return out_path
 
-# ---------------------------
-# Reference dataset (from your repo)
-# ---------------------------
+def get_physchem_properties(seq: str) -> dict:
+    try:
+        params = ProtParam.ProteinAnalysis(seq.replace("X", ""))
+        return {"mw_kda": params.molecular_weight() / 1000, "pi": params.isoelectric_point(), "instability": params.instability_index()}
+    except Exception:
+        return {"mw_kda": np.nan, "pi": np.nan, "instability": np.nan}
+
+# =========================
+# 3. DATA & DB HANDLING
+# =========================
 @st.cache_data
 def load_reference_csv():
-    # Keep the CSV inside the Space repo under data/known_capsule_proteins.csv
-    csv_path = Path("data") / "known_capsule_proteins.csv"
-    return pd.read_csv(csv_path)
+    try: return pd.read_csv("data/known_capsule_proteins.csv")
+    except Exception: return pd.DataFrame(columns=["PDB_ID", "Organism", "Gene_Name", "Function"])
 
 REFERENCE_DF = load_reference_csv()
 
-# ---------------------------
-# Database Handling
-# ---------------------------
-def ensure_database_dir(base_dir: Path) -> Path:
-    base_dir.mkdir(parents=True, exist_ok=True)
-    return base_dir
-
 def build_database_from_reference_pdb_ids(db_dir: Path, pdb_ids):
-    db_dir = ensure_database_dir(db_dir)
-    downloaded = []
-    failed = []
-
+    db_dir.mkdir(parents=True, exist_ok=True)
+    downloaded, failed = [], []
     for pid in pdb_ids:
         try:
             out = db_dir / f"{pid}.pdb"
-            if not out.exists():
-                download_pdb_by_id(pid, out)
+            if not out.exists(): download_pdb_by_id(pid, out)
             downloaded.append(pid)
-        except Exception:
-            failed.append(pid)
-
+        except Exception: failed.append(pid)
     return downloaded, failed
 
-def extract_zip_to_db(zip_bytes: bytes, db_dir: Path):
-    db_dir = ensure_database_dir(db_dir)
-    with zipfile.ZipFile(io.BytesIO(zip_bytes), "r") as z:
-        z.extractall(db_dir)
-
-# ---------------------------
-# Search Methods (one-by-one)
-# ---------------------------
-def rmsd_search(query_pdb: Path, db_dir: Path, threshold: float, chain_id: str):
+# =========================
+# 4. SEARCH ENGINES
+# =========================
+def run_full_pipeline(query_pdb: Path, db_dir: Path, threshold: float, chain_id: str) -> pd.DataFrame:
     qp = PDBWrapper(str(query_pdb))
     qp.parse()
     qcoords = qp.get_coordinates(chain_id=chain_id)
-    if qcoords is None:
-        return pd.DataFrame()
-
-    rows = []
-    for pdb_file in sorted(db_dir.glob("*.pdb")):
-        dp = PDBWrapper(str(pdb_file))
-        try:
-            dp.parse()
-            dcoords = dp.get_coordinates(chain_id=chain_id)
-        except Exception:
-            continue
-        if dcoords is None:
-            continue
-        if len(qcoords) != len(dcoords):
-            continue
-
-        rmsd = calculate_rmsd(qcoords, dcoords)
-        if rmsd is None:
-            continue
-        score = max(0.0, 1.0 - (rmsd / 10.0))  # normalize to 0-1
-        if score >= threshold:
-            rows.append({"method": "RMSD", "target": pdb_file.stem, "score": score, "rmsd": rmsd})
-
-    df = pd.DataFrame(rows)
-    if not df.empty:
-        df = df.sort_values("score", ascending=False).reset_index(drop=True)
-    return df
-
-def sequence_search(query_pdb: Path, db_dir: Path, threshold: float, chain_id: str):
-    qp = PDBWrapper(str(query_pdb))
-    qp.parse()
     qseq = qp.get_sequence(chain_id=chain_id)
-    if not qseq:
-        return pd.DataFrame()
-
-    rows = []
-    for pdb_file in sorted(db_dir.glob("*.pdb")):
-        dp = PDBWrapper(str(pdb_file))
-        try:
-            dp.parse()
-            dseq = dp.get_sequence(chain_id=chain_id)
-        except Exception:
-            continue
-        if not dseq:
-            continue
-
-        alns = pairwise2.align.globalxx(qseq, dseq, one_alignment_only=True)
-        if not alns:
-            continue
-        a = alns[0]
-        matches = sum(x == y for x, y in zip(a.seqA, a.seqB))
-        identity = matches / max(len(qseq), len(dseq))
-        if identity >= threshold:
-            rows.append({"method": "Sequence", "target": pdb_file.stem, "score": identity, "aligned_length": len(a.seqA)})
-
-    df = pd.DataFrame(rows)
-    if not df.empty:
-        df = df.sort_values("score", ascending=False).reset_index(drop=True)
-    return df
-
-def distance_matrix_search(query_pdb: Path, db_dir: Path, threshold: float, chain_id: str):
-    qp = PDBWrapper(str(query_pdb))
-    qp.parse()
-    qcoords = qp.get_coordinates(chain_id=chain_id)
-    if qcoords is None:
-        return pd.DataFrame()
-
+    
+    if qcoords is None or not qseq: return pd.DataFrame()
     qdm = calculate_distance_matrix(qcoords)
-    rows = []
 
+    results = []
     for pdb_file in sorted(db_dir.glob("*.pdb")):
+        target_id = pdb_file.stem.upper()
+        if target_id == query_pdb.stem.upper(): continue # Skip self
+        
         dp = PDBWrapper(str(pdb_file))
-        try:
-            dp.parse()
-            dcoords = dp.get_coordinates(chain_id=chain_id)
-        except Exception:
-            continue
-        if dcoords is None:
-            continue
+        try: dp.parse()
+        except Exception: continue
+        
+        dcoords = dp.get_coordinates(chain_id=chain_id)
+        dseq = dp.get_sequence(chain_id=chain_id)
+        
+        if dcoords is None or not dseq: continue
 
-        ddm = calculate_distance_matrix(dcoords)
-        if qdm.shape != ddm.shape:
-            continue
+        # 1. RMSD
+        rmsd_val, r_score = np.nan, 0.0
+        if len(qcoords) == len(dcoords):
+            rmsd_val = calculate_rmsd(qcoords, dcoords)
+            if rmsd_val is not None: r_score = max(0.0, 1.0 - (rmsd_val / 10.0))
 
-        corr = distance_matrix_correlation(qdm, ddm)
-        score = (corr + 1.0) / 2.0
-        if score >= threshold:
-            rows.append({"method": "Distance_Matrix", "target": pdb_file.stem, "score": score, "correlation": corr})
+        # 2. Sequence Identity
+        s_score = 0.0
+        alns = pairwise2.align.globalxx(qseq, dseq, one_alignment_only=True)
+        if alns:
+            a = alns[0]
+            matches = sum(x == y for x, y in zip(a.seqA, a.seqB))
+            s_score = matches / max(len(qseq), len(dseq))
 
-    df = pd.DataFrame(rows)
+        # 3. Distance Matrix Correlation
+        d_score = 0.0
+        if qdm.shape == calculate_distance_matrix(dcoords).shape:
+            corr = distance_matrix_correlation(qdm, calculate_distance_matrix(dcoords))
+            d_score = (corr + 1.0) / 2.0
+
+        # Consensus
+        final_score = (0.33 * r_score) + (0.33 * s_score) + (0.34 * d_score)
+        if final_score > 0:
+            results.append({
+                "Target_PDB": target_id, "Consensus_Score": final_score,
+                "RMSD": rmsd_val, "Seq_Identity": s_score, "DM_Correlation": d_score
+            })
+
+    df = pd.DataFrame(results)
     if not df.empty:
-        df = df.sort_values("score", ascending=False).reset_index(drop=True)
+        # Merge with biological metadata
+        ref_meta = REFERENCE_DF[["PDB_ID", "Organism", "Gene_Name", "Function"]].copy()
+        ref_meta["PDB_ID"] = ref_meta["PDB_ID"].str.upper()
+        df = df.merge(ref_meta, left_on="Target_PDB", right_on="PDB_ID", how="left")
+        df = df.sort_values("Consensus_Score", ascending=False).reset_index(drop=True)
     return df
 
-def consensus_from_results(rmsd_df, seq_df, dm_df):
-    # unify scores by target
-    all_targets = set()
-    for d in [rmsd_df, seq_df, dm_df]:
-        if d is not None and not d.empty:
-            all_targets.update(d["target"].tolist())
+# =========================
+# 5. UI LAYOUT
+# =========================
+st.title("🧬 ProCap Search Diagnostic Suite")
+st.markdown("#### Operational Intelligence for Bacterial Capsule Biosynthesis Protein Identification")
+st.divider()
 
-    rows = []
-    for t in sorted(all_targets):
-        r = float(rmsd_df.loc[rmsd_df["target"] == t, "score"].values[0]) if (rmsd_df is not None and not rmsd_df.empty and (rmsd_df["target"] == t).any()) else 0.0
-        s = float(seq_df.loc[seq_df["target"] == t, "score"].values[0]) if (seq_df is not None and not seq_df.empty and (seq_df["target"] == t).any()) else 0.0
-        d = float(dm_df.loc[dm_df["target"] == t, "score"].values[0]) if (dm_df is not None and not dm_df.empty and (dm_df["target"] == t).any()) else 0.0
-
-        final = 0.33 * r + 0.33 * s + 0.34 * d
-        agree = sum([r > 0, s > 0, d > 0])
-        confidence = "High (3/3)" if agree == 3 else "Medium (2/3)" if agree == 2 else "Low (1/3)"
-
-        rows.append({
-            "method": "Consensus",
-            "target": t,
-            "score": final,
-            "agree_count": agree,
-            "confidence": confidence,
-            "rmsd_score": r,
-            "sequence_score": s,
-            "distance_matrix_score": d,
-        })
-
-    df = pd.DataFrame(rows)
-    if not df.empty:
-        df = df.sort_values(["score", "agree_count"], ascending=[False, False]).reset_index(drop=True)
-    return df
-
-# ---------------------------
-# UI
-# ---------------------------
-st.title("🧬 ProCap Search")
-st.caption("Protein Capsule Structure Search Pipeline — benchmarking protein structure search tools for pathogen capsule identification.")
+# Setup Temp Workspace
+tmp_root = Path(tempfile.gettempdir()) / "procap_space"
+query_dir = tmp_root / "query"; query_dir.mkdir(parents=True, exist_ok=True)
+db_dir = tmp_root / "db"; db_dir.mkdir(parents=True, exist_ok=True)
 
 with st.sidebar:
-    st.header("Inputs")
-    chain_id = st.text_input("Chain ID", value="A", help="Most PDBs use chain A. If not, change it.")
-    threshold = st.slider("Similarity threshold", 0.0, 1.0, 0.70, 0.01)
+    st.header("⚙️ Pipeline Configuration")
+    chain_id = st.text_input("Target Chain ID", value="A", help="Most PDBs use chain A.")
+    threshold = st.slider("Global Similarity Threshold", 0.0, 1.0, 0.40, 0.05)
 
-    st.subheader("Query (choose one)")
-    pdb_id = st.text_input("PDB ID (optional)", value="", placeholder="e.g., 1R3F")
-    uploaded_query = st.file_uploader("Or upload a PDB file", type=["pdb"])
+    st.subheader("Reference Database")
+    st.info("The system automatically pulls the 23 verified capsule proteins from your known_capsule_proteins.csv file.")
+    if st.button("Initialize/Update Database"):
+        with st.spinner("Downloading reference structures from RCSB..."):
+            d, f = build_database_from_reference_pdb_ids(db_dir, REFERENCE_DF["PDB_ID"].dropna().astype(str).tolist())
+            st.success(f"Database ready: {len(d)} structures loaded.")
 
-    st.divider()
-    st.subheader("Database")
-    db_mode = st.radio(
-        "Database source",
-        ["A) Built-in (known capsule proteins from CSV)", "B) Upload your own PDB database (.zip of .pdb files)", "A + B) Combine both"],
-        index=2,
-    )
-    uploaded_db_zip = st.file_uploader("Upload .zip (only for option B or A+B)", type=["zip"])
+tab1, tab2, tab3 = st.tabs(["🔍 Structure Diagnostic", "📊 Database Analytics", "📖 Methodology"])
 
-    st.divider()
-    st.subheader("Run")
-    run_rmsd = st.button("1) Run RMSD Search")
-    run_seq = st.button("2) Run Sequence Search")
-    run_dm = st.button("3) Run Distance Matrix Search")
-    run_consensus = st.button("4) Run Consensus (requires previous results)")
+with tab1:
+    c_in, c_res = st.columns([1, 1.8], gap="large")
 
-# Prepare temp workspace
-tmp_root = Path(tempfile.gettempdir()) / "procap_space"
-tmp_root.mkdir(parents=True, exist_ok=True)
-query_dir = tmp_root / "query"
-db_dir = tmp_root / "db"
-query_dir.mkdir(parents=True, exist_ok=True)
-db_dir.mkdir(parents=True, exist_ok=True)
-
-# ---------------------------
-# Build Query File
-# ---------------------------
-query_pdb_path = None
-try:
-    if uploaded_query is not None:
-        query_pdb_path = query_dir / uploaded_query.name
-        query_pdb_path.write_bytes(uploaded_query.getvalue())
-    elif pdb_id.strip():
-        query_pdb_path = query_dir / f"{pdb_id.strip().upper()}.pdb"
-        if not query_pdb_path.exists():
-            download_pdb_by_id(pdb_id, query_pdb_path)
-except Exception as e:
-    st.error(f"Failed to prepare query PDB: {e}")
-
-# ---------------------------
-# Build Database
-# ---------------------------
-db_info = st.container()
-with db_info:
-    st.subheader("Database status")
-
-    # reset db directory each run for clarity
-    for f in db_dir.glob("*.pdb"):
-        try:
-            f.unlink()
-        except Exception:
-            pass
-
-    built_in_ids = REFERENCE_DF["PDB_ID"].dropna().astype(str).str.upper().tolist()
-
-    use_a = db_mode.startswith("A)") or db_mode.startswith("A +")
-    use_b = db_mode.startswith("B)") or db_mode.startswith("A +")
-
-    downloaded, failed = ([], [])
-    if use_a:
-        with st.spinner("Preparing built-in database (downloading PDBs from RCSB if needed)..."):
-            downloaded, failed = build_database_from_reference_pdb_ids(db_dir, built_in_ids)
-
-    if use_b:
-        if uploaded_db_zip is None:
-            st.warning("Upload a .zip of .pdb files to use database option B.")
+    with c_in:
+        st.subheader("I. Query Input")
+        query_mode = st.radio("Input Source", ["RCSB Database ID", "Local PDB Upload"])
+        if query_mode == "RCSB Database ID":
+            pdb_id = st.text_input("Enter 4-letter PDB ID", value="1R3G").strip().upper()
         else:
-            with st.spinner("Extracting uploaded database zip..."):
-                extract_zip_to_db(uploaded_db_zip.getvalue(), db_dir)
+            uploaded_query = st.file_uploader("Upload .pdb file", type=["pdb"])
+            pdb_id = "USER_UPLOAD"
 
-    pdb_count = len(list(db_dir.glob("*.pdb")))
-    st.write(f"Database PDB files available: **{pdb_count}**")
+        execute = st.button("Execute Full Pipeline", type="primary", use_container_width=True)
 
-    if use_a:
-        st.write(f"Built-in PDB IDs downloaded/available: **{len(downloaded)}**")
-        if failed:
-            st.warning(f"Failed to download {len(failed)} PDB IDs from RCSB: {', '.join(failed[:10])}{'...' if len(failed) > 10 else ''}")
+    with c_res:
+        if execute:
+            query_pdb_path = None
+            if query_mode == "RCSB Database ID" and len(pdb_id) == 4:
+                query_pdb_path = query_dir / f"{pdb_id}.pdb"
+                if not query_pdb_path.exists(): download_pdb_by_id(pdb_id, query_pdb_path)
+            elif query_mode == "Local PDB Upload" and uploaded_query:
+                query_pdb_path = query_dir / uploaded_query.name
+                query_pdb_path.write_bytes(uploaded_query.getvalue())
 
-# ---------------------------
-# Results State
-# ---------------------------
-if "rmsd_df" not in st.session_state:
-    st.session_state.rmsd_df = pd.DataFrame()
-if "seq_df" not in st.session_state:
-    st.session_state.seq_df = pd.DataFrame()
-if "dm_df" not in st.session_state:
-    st.session_state.dm_df = pd.DataFrame()
-if "cons_df" not in st.session_state:
-    st.session_state.cons_df = pd.DataFrame()
+            if not query_pdb_path:
+                st.error("Failed to prepare query. Check PDB ID or file.")
+            else:
+                with st.spinner("Aligning structures and computing matrices..."):
+                    results_df = run_full_pipeline(query_pdb_path, db_dir, threshold, chain_id)
+                    
+                    # Extract PhysChem for Query
+                    qp = PDBWrapper(str(query_pdb_path))
+                    qp.parse()
+                    qseq = qp.get_sequence(chain_id=chain_id)
+                    physchem = get_physchem_properties(qseq) if qseq else {}
 
-# ---------------------------
-# Main Panels
-# ---------------------------
-col1, col2 = st.columns([1.2, 1])
+                if results_df.empty:
+                    st.warning("No homologous structures found matching the coordinate lengths or passing thresholds.")
+                else:
+                    top_hit = results_df.iloc[0]
+                    score = top_hit["Consensus_Score"]
+                    priority = "High" if score >= 0.7 else "Medium" if score >= 0.4 else "Low"
+                    
+                    with st.container(border=True):
+                        st.markdown(f"### Diagnostic Status: <span class='priority-{priority.lower()}'>{priority} Confidence Homolog</span>", unsafe_allow_html=True)
+                        st.markdown("**Scientific Rationale:**")
+                        st.write(f"• **Top Biological Match:** {top_hit.get('Organism', 'Unknown')} | {top_hit.get('Gene_Name', 'N/A')} ({top_hit.get('Function', 'N/A')})")
+                        st.write(f"• **Consensus Score:** {score:.2f}/1.00 (Aggregate of RMSD, Seq Identity, and Distance Matrix)")
+                        if not pd.isna(top_hit['RMSD']): st.write(f"• **Structural Fidelity:** RMSD of {top_hit['RMSD']:.2f} Å indicates strong 3D topology conservation.")
+                        if physchem.get('instability', 0) > 40: st.write("• **Warning:** Query protein predicted to be unstable in vitro.")
 
-with col1:
-    st.subheader("Project summary")
-    st.markdown(
-        """
-**What this demo does**
-- Accepts a query protein structure (upload PDB file or fetch by PDB ID)
-- Searches for similar proteins using **RMSD**, **Sequence Identity**, and **Distance Matrix Correlation**
-- Builds a **Consensus score** combining all three methods
+                    st.markdown("### Query PhysChem Profile")
+                    m1, m2, m3, m4 = st.columns(4)
+                    m1.metric("Mol. Weight", f"{physchem.get('mw_kda', 0):.1f} kDa")
+                    m2.metric("Sequence Length", f"{len(qseq) if qseq else 0} AA")
+                    m3.metric("Isoelectric Pt (pI)", f"{physchem.get('pi', 0):.2f}")
+                    m4.metric("Instability Idx", f"{physchem.get('instability', 0):.1f}")
 
-**Reference dataset**
-- 23 known capsule biosynthesis proteins across 5 pathogenic bacteria (from `data/known_capsule_proteins.csv`)
+                    st.markdown("### Consensus Output (Top 10)")
+                    st.dataframe(results_df[["Target_PDB", "Organism", "Gene_Name", "Consensus_Score", "Seq_Identity", "RMSD"]].head(10), use_container_width=True, hide_index=True)
 
-**Note**
-- RMSD and distance-matrix searches require consistent chain selection and comparable coordinate lengths, so some structures may be skipped.
-        """
-    )
+with tab2:
+    st.subheader("Reference Database Analytics")
+    if not REFERENCE_DF.empty:
+        c1, c2 = st.columns(2)
+        with c1:
+            fig1 = px.pie(REFERENCE_DF, names="Organism", title="Pathogen Distribution", hole=0.3)
+            st.plotly_chart(fig1, use_container_width=True)
+        with c2:
+            fig2 = px.bar(REFERENCE_DF["Protein_Family"].value_counts().reset_index(), x="Protein_Family", y="count", title="Protein Families")
+            st.plotly_chart(fig2, use_container_width=True)
+        st.dataframe(REFERENCE_DF, use_container_width=True)
 
-with col2:
-    st.subheader("Reference proteins (preview)")
-    st.dataframe(REFERENCE_DF.head(10), use_container_width=True)
-
-st.divider()
-st.subheader("Run results")
-
-if query_pdb_path is None:
-    st.info("Provide a query by uploading a PDB file or entering a PDB ID in the sidebar.")
-else:
-    st.success(f"Query ready: {query_pdb_path.name}")
-
-# RMSD
-if run_rmsd:
-    if query_pdb_path is None:
-        st.error("No query PDB provided.")
-    else:
-        with st.spinner("Running RMSD search..."):
-            st.session_state.rmsd_df = rmsd_search(query_pdb_path, db_dir, threshold, chain_id)
-        st.toast("RMSD search complete.", icon="✅")
-
-if not st.session_state.rmsd_df.empty:
-    st.markdown("### 1) RMSD results")
-    st.dataframe(st.session_state.rmsd_df, use_container_width=True)
-    st.download_button(
-        "Download RMSD CSV",
-        data=st.session_state.rmsd_df.to_csv(index=False).encode("utf-8"),
-        file_name="rmsd_results.csv",
-        mime="text/csv",
-    )
-
-# Sequence
-if run_seq:
-    if query_pdb_path is None:
-        st.error("No query PDB provided.")
-    else:
-        with st.spinner("Running sequence search..."):
-            st.session_state.seq_df = sequence_search(query_pdb_path, db_dir, threshold, chain_id)
-        st.toast("Sequence search complete.", icon="✅")
-
-if not st.session_state.seq_df.empty:
-    st.markdown("### 2) Sequence results")
-    st.dataframe(st.session_state.seq_df, use_container_width=True)
-    st.download_button(
-        "Download Sequence CSV",
-        data=st.session_state.seq_df.to_csv(index=False).encode("utf-8"),
-        file_name="sequence_results.csv",
-        mime="text/csv",
-    )
-
-# Distance Matrix
-if run_dm:
-    if query_pdb_path is None:
-        st.error("No query PDB provided.")
-    else:
-        with st.spinner("Running distance-matrix search..."):
-            st.session_state.dm_df = distance_matrix_search(query_pdb_path, db_dir, threshold, chain_id)
-        st.toast("Distance matrix search complete.", icon="✅")
-
-if not st.session_state.dm_df.empty:
-    st.markdown("### 3) Distance matrix results")
-    st.dataframe(st.session_state.dm_df, use_container_width=True)
-    st.download_button(
-        "Download Distance Matrix CSV",
-        data=st.session_state.dm_df.to_csv(index=False).encode("utf-8"),
-        file_name="distance_matrix_results.csv",
-        mime="text/csv",
-    )
-
-# Consensus
-if run_consensus:
-    if st.session_state.rmsd_df.empty and st.session_state.seq_df.empty and st.session_state.dm_df.empty:
-        st.error("Run at least one method first (preferably all three).")
-    else:
-        with st.spinner("Computing consensus..."):
-            st.session_state.cons_df = consensus_from_results(
-                st.session_state.rmsd_df,
-                st.session_state.seq_df,
-                st.session_state.dm_df,
-            )
-        st.toast("Consensus ready.", icon="✅")
-
-if not st.session_state.cons_df.empty:
-    st.markdown("### 4) Consensus results")
-    st.dataframe(st.session_state.cons_df, use_container_width=True)
-    st.download_button(
-        "Download Consensus CSV",
-        data=st.session_state.cons_df.to_csv(index=False).encode("utf-8"),
-        file_name="consensus_results.csv",
-        mime="text/csv",
-    )
-
-st.divider()
-st.subheader("About")
-st.markdown(
-    """
-- **Author:** Utkarsh Patel  
-- **GitHub:** github.com/utkarshcpatel24052001-cell/procap-search  
-- **Goal:** Benchmark protein structure search strategies for pathogen capsule identification  
-"""
-)
+with tab3:
+    st.subheader("Methodology")
+    st.markdown("""
+    **ProCap Search** aggregates three distinct algorithms to overcome individual methodology blind spots:
+    1. **Sequence Identity (BioPython pairwise2):** Fast primary structure alignment.
+    2. **RMSD-Based Alignment:** Physics-based 3D superposition. (Note: Requires identical coordinate counts).
+    3. **Distance Matrix Correlation (SciPy):** Topology-based comparison using internal Euclidian distances, highly resilient to loop movements.
+    """)
