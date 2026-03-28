@@ -5,5 +5,4 @@ scipy
 biopython
 plotly
 requests
-stmol
 py3Dmol
