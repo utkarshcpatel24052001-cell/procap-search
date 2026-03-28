@@ -120,11 +120,15 @@ def distance_matrix_correlation(dm1, dm2):
     corr = np.corrcoef(flat1, flat2)[0, 1]
     return float(corr) if not np.isnan(corr) else 0.0
 
-def download_pdb_by_id(pdb_id: str, out_path: Path):
-    r = requests.get(f"https://files.rcsb.org/download/{pdb_id.upper()}.pdb", timeout=20)
-    r.raise_for_status()
-    out_path.write_text(r.text)
-    return out_path
+def download_pdb_by_id(pdb_id: str, out_path: Path) -> Optional[Path]:
+    """Downloads PDB safely and gracefully returns None if 404/Error occurs."""
+    try:
+        r = requests.get(f"https://files.rcsb.org/download/{pdb_id.upper()}.pdb", timeout=15)
+        r.raise_for_status()
+        out_path.write_text(r.text)
+        return out_path
+    except requests.exceptions.RequestException:
+        return None
 
 def get_physchem_properties(seq: str) -> dict:
     try:
@@ -133,10 +137,9 @@ def get_physchem_properties(seq: str) -> dict:
     except Exception: return {"mw_kda": np.nan, "pi": np.nan, "instability": np.nan}
 
 # =========================
-# 3. INTERACTIVE 3D & VISUALIZERS (FIXED NATIVE RENDER)
+# 3. INTERACTIVE 3D & VISUALIZERS
 # =========================
 def render_3d_viewer(pdb_string: str):
-    """Renders an interactive 3D protein model using py3Dmol."""
     view = py3Dmol.view(width=800, height=400)
     view.addModel(pdb_string, 'pdb')
     view.setStyle({'cartoon': {'color': 'spectrum'}})
@@ -145,7 +148,6 @@ def render_3d_viewer(pdb_string: str):
     return view
 
 def generate_alignment_html(seqA: str, seqB: str) -> str:
-    """Generates a professional bioinformatics sequence alignment map."""
     alns = pairwise2.align.globalxx(seqA, seqB, one_alignment_only=True)
     if not alns: return "<p>Alignment failed.</p>"
     a = alns[0]
@@ -179,7 +181,6 @@ def load_reference_csv():
 REFERENCE_DF = load_reference_csv()
 
 def predict_biological_function(results_df: pd.DataFrame) -> dict:
-    """Derives putative biological function based on Top 3 consensus hits."""
     top_3 = results_df.head(3).dropna(subset=['Protein_Family', 'Structure_Type', 'Function'])
     if top_3.empty: return {"family": "Unknown", "structure": "Unknown", "function": "Unknown", "confidence": "Low"}
     
@@ -194,11 +195,12 @@ def build_database_from_reference_pdb_ids(db_dir: Path, pdb_ids):
     db_dir.mkdir(parents=True, exist_ok=True)
     downloaded = []
     for pid in pdb_ids:
-        try:
-            out = db_dir / f"{pid}.pdb"
-            if not out.exists(): download_pdb_by_id(pid, out)
+        out = db_dir / f"{pid}.pdb"
+        if not out.exists():
+            if download_pdb_by_id(pid, out):
+                downloaded.append(pid)
+        else:
             downloaded.append(pid)
-        except Exception: pass
     return downloaded
 
 def run_full_pipeline(query_pdb: Path, db_dir: Path, chain_id: str) -> pd.DataFrame:
@@ -265,7 +267,7 @@ with st.sidebar:
     chain_id = st.text_input("Target Chain ID", value="A", help="Default chain for biological assemblies.")
     
     st.subheader("Reference Database")
-    st.info("The system automatically pulls the 23 verified capsule proteins from your known_capsule_proteins.csv file.")
+    st.info("The system automatically pulls the verified capsule proteins from your known_capsule_proteins.csv file.")
     if st.button("Initialize/Update Local Database"):
         with st.spinner("Downloading reference structures from RCSB..."):
             d = build_database_from_reference_pdb_ids(db_dir, REFERENCE_DF["PDB_ID"].dropna().astype(str).tolist())
@@ -296,12 +298,15 @@ with tab1:
             query_pdb_path = None
             if query_mode == "RCSB Database ID" and len(pdb_id) == 4:
                 query_pdb_path = query_dir / f"{pdb_id}.pdb"
-                if not query_pdb_path.exists(): download_pdb_by_id(pdb_id, query_pdb_path)
+                if not query_pdb_path.exists():
+                    if not download_pdb_by_id(pdb_id, query_pdb_path):
+                        query_pdb_path = None
             elif query_mode == "Local PDB Upload" and uploaded_query:
                 query_pdb_path = query_dir / uploaded_query.name
                 query_pdb_path.write_bytes(uploaded_query.getvalue())
 
-            if not query_pdb_path: st.error("Failed to prepare query.")
+            if not query_pdb_path: 
+                st.error("Failed to prepare query. Check if the PDB ID exists on the RCSB database.")
             else:
                 with st.spinner("Executing structural superposition and sequence alignments..."):
                     results_df = run_full_pipeline(query_pdb_path, db_dir, chain_id)
@@ -348,7 +353,7 @@ with tab1:
                     st.dataframe(results_df[["Target_PDB", "Organism", "Gene_Name", "Protein_Family", "Consensus_Score", "Seq_Identity"]].head(5), use_container_width=True, hide_index=True)
 
 # =========================
-# TAB 2: 3D Viewer & Alignments (FIXED DEPENDENCY)
+# TAB 2: 3D Viewer & Alignments
 # =========================
 with tab2:
     st.subheader("Structural Visualization & Sequence Interrogation")
@@ -359,7 +364,6 @@ with tab2:
             st.markdown("#### Interactive 3D Query Topology")
             st.caption("Colored by Secondary Structure (Spectrum). Use mouse to rotate/zoom.")
             with st.container(border=True):
-                # Render 3D Model Natively (No stmol dependency)
                 view = render_3d_viewer(st.session_state['query_pdb'])
                 components.html(view._make_html(), height=400)
                 
@@ -369,7 +373,6 @@ with tab2:
             st.markdown(f"#### Alignment vs Top Hit ({st.session_state['top_hit_id']})")
             st.caption("BioPython Global Sequence Alignment. (| = Exact Match)")
             
-            # Render HTML Sequence Alignment
             align_html = generate_alignment_html(st.session_state['qseq'], st.session_state['tseq'])
             st.markdown(align_html, unsafe_allow_html=True)
             
