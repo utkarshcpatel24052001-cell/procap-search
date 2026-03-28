@@ -34,56 +34,148 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
+# ========================================
+# 🎨 COLOR CUSTOMIZATION - WHITE BG, BLACK TEXT
+# ========================================
+PRIMARY_COLOR = "#0d47a1"           # Dark blue for headers
+PRIMARY_LIGHT = "#e3f2fd"           # Light blue backgrounds
+TEXT_COLOR = "#000000"              # Pure black text
+BG_COLOR = "#ffffff"               # Pure white background
+SECONDARY_BG = "#f5f5f5"           # Light gray alternate rows
+BORDER_COLOR = "#cccccc"           # Gray borders
+SUCCESS_COLOR = "#16a34a"          # Green
+WARNING_COLOR = "#d97706"          # Orange
+ERROR_COLOR = "#dc2626"            # Red
+HOVER_COLOR = "#f0f7ff"            # Light blue hover
+
 # Modern LIMS CSS - Clean Sans-Serif, High Contrast, Card-based
 st.markdown(
-    """
+    f"""
     <style>
+    /* Set page background to white */
+    .stApp {{
+        background-color: {BG_COLOR} !important;
+    }}
+    
     /* Clean, modern typography for dense data dashboards */
-    html, body, .stMarkdown, p, li, span, label {
+    html, body, .stMarkdown, p, li, span, label {{
         font-family: "Segoe UI", "Inter", "Helvetica Neue", sans-serif !important;
         font-size: 16px !important;
-        color: #1e293b;
-    }
+        color: {TEXT_COLOR} !important;
+    }}
     
     /* Headers */
-    h1, h2, h3, h4 { color: #0f172a !important; font-weight: 700 !important; }
-    h3 { font-size: 20px !important; border-bottom: 2px solid #e2e8f0; padding-bottom: 8px;}
+    h1, h2, h3, h4 {{ 
+        color: {PRIMARY_COLOR} !important; 
+        font-weight: 700 !important; 
+    }}
+    h3 {{ 
+        font-size: 20px !important; 
+        border-bottom: 2px solid {BORDER_COLOR}; 
+        padding-bottom: 8px;
+    }}
 
     /* Metric Cards */
-    div[data-testid="stMetricLabel"] p {
+    div[data-testid="stMetricLabel"] p {{
         font-size: 13px !important;
         font-weight: 700 !important;
-        color: #64748b !important;
+        color: {TEXT_COLOR} !important;
         text-transform: uppercase;
         letter-spacing: 0.05em;
-    }
-    div[data-testid="stMetricValue"] {
+    }}
+    div[data-testid="stMetricValue"] {{
         font-size: 32px !important;
         font-weight: 800 !important;
-        color: #2563eb !important;
-    }
+        color: {PRIMARY_COLOR} !important;
+    }}
 
     /* Status Banners */
-    .alert-high { background-color: #f0fdf4; border-left: 6px solid #16a34a; padding: 16px; border-radius: 6px; color: #166534; font-weight: 600; margin-bottom: 15px;}
-    .alert-medium { background-color: #fffbeb; border-left: 6px solid #d97706; padding: 16px; border-radius: 6px; color: #92400e; font-weight: 600; margin-bottom: 15px;}
-    .alert-low { background-color: #fef2f2; border-left: 6px solid #dc2626; padding: 16px; border-radius: 6px; color: #991b1b; font-weight: 600; margin-bottom: 15px;}
-    .info-box { background-color: #f0f9ff; border-left: 6px solid #2563eb; padding: 16px; border-radius: 6px; color: #1e40af; font-weight: 600; margin-bottom: 15px;}
+    .alert-high {{ 
+        background-color: #f0fdf4; 
+        border-left: 6px solid {SUCCESS_COLOR}; 
+        padding: 16px; 
+        border-radius: 6px; 
+        color: #166534; 
+        font-weight: 600; 
+        margin-bottom: 15px;
+    }}
+    .alert-medium {{ 
+        background-color: #fffbeb; 
+        border-left: 6px solid {WARNING_COLOR}; 
+        padding: 16px; 
+        border-radius: 6px; 
+        color: #92400e; 
+        font-weight: 600; 
+        margin-bottom: 15px;
+    }}
+    .alert-low {{ 
+        background-color: #fef2f2; 
+        border-left: 6px solid {ERROR_COLOR}; 
+        padding: 16px; 
+        border-radius: 6px; 
+        color: #991b1b; 
+        font-weight: 600; 
+        margin-bottom: 15px;
+    }}
+    .info-box {{ 
+        background-color: {PRIMARY_LIGHT}; 
+        border-left: 6px solid {PRIMARY_COLOR}; 
+        padding: 16px; 
+        border-radius: 6px; 
+        color: {PRIMARY_COLOR}; 
+        font-weight: 600; 
+        margin-bottom: 15px;
+    }}
 
     /* Sequence Alignment Box */
-    .seq-align-box {
+    .seq-align-box {{
         font-family: 'Fira Code', 'Courier New', monospace !important;
-        background-color: #f8fafc;
+        background-color: {BG_COLOR};
         padding: 16px;
         border-radius: 6px;
-        border: 1px solid #cbd5e1;
+        border: 2px solid {BORDER_COLOR};
         overflow-x: auto;
         font-size: 14px !important;
         line-height: 1.4 !important;
         white-space: pre !important;
-        color: #334155;
-    }
+        color: {TEXT_COLOR};
+    }}
     
-    .stButton > button { font-weight: 600 !important; border-radius: 6px !important; }
+    .stButton > button {{ 
+        font-weight: 600 !important; 
+        border-radius: 6px !important; 
+        color: {BG_COLOR} !important;
+        background-color: {PRIMARY_COLOR} !important;
+    }}
+    
+    /* Sidebar background */
+    section[data-testid="stSidebar"] {{
+        background-color: {SECONDARY_BG} !important;
+    }}
+    
+    section[data-testid="stSidebar"] * {{
+        color: {TEXT_COLOR} !important;
+    }}
+    
+    /* Container borders */
+    .stContainer {{
+        background-color: {BG_COLOR} !important;
+        border: 2px solid {BORDER_COLOR} !important;
+        border-radius: 8px !important;
+        padding: 16px !important;
+    }}
+    
+    /* Dataframe styling */
+    .stDataFrame {{
+        background-color: {BG_COLOR} !important;
+    }}
+    
+    /* Tab styling */
+    button[data-baseweb="tab"] {{
+        color: {TEXT_COLOR} !important;
+        font-weight: 600 !important;
+    }}
+    
     </style>
     """,
     unsafe_allow_html=True,
@@ -289,7 +381,7 @@ def generate_alignment_visualization(seqA: str, seqB: str, blocksize: int = 60) 
     html = '<div class="seq-align-box">\n'
     for i in range(0, len(a.seqA), blocksize):
         match_line = "".join(["|" if a.seqA[j] == a.seqB[j] and a.seqA[j] != "-" else "." if a.seqA[j] != "-" and a.seqB[j] != "-" else " " for j in range(i, min(i + blocksize, len(a.seqA)))])
-        html += f"<span style='color:#2563eb; font-weight:bold;'>Query: </span> {a.seqA[i:i+blocksize]}\n"
+        html += f"<span style='color:#0d47a1; font-weight:bold;'>Query: </span> {a.seqA[i:i+blocksize]}\n"
         html += f"<span style='color:#16a34a; font-weight:bold;'>Match: </span> {match_line}\n"
         html += f"<span style='color:#dc2626; font-weight:bold;'>Target:</span> {a.seqB[i:i+blocksize]}\n\n"
     html += '</div>'
