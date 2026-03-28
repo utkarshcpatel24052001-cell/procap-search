@@ -3,6 +3,7 @@ ProCap Search Professional Diagnostic Suite v3.0
 High-Throughput Structural Homology & Functional Annotation Pipeline
 Production-Grade Bioinformatics Application (Dark Mode Edition)
 Author: Utkarsh Patel
+ENHANCED: Dynamic Chain Selection
 """
 
 from __future__ import annotations
@@ -75,6 +76,7 @@ st.markdown(
     .alert-low { background-color: #330000; border-left: 6px solid #ff0000; padding: 16px; border-radius: 6px; color: #ff3333; font-weight: 600; margin-bottom: 15px;}
     .info-box { background-color: #001133; border-left: 6px solid #3399ff; padding: 16px; border-radius: 6px; color: #3399ff; font-weight: 600; margin-bottom: 15px;}
     .success-box { background-color: #001a00; border-left: 6px solid #00ff00; padding: 16px; border-radius: 6px; color: #00ff00; font-weight: 600; margin-bottom: 15px;}
+    .chain-box { background-color: #0a1a2e; border-left: 6px solid #16c784; padding: 12px; border-radius: 6px; color: #16c784; font-weight: 600; margin-bottom: 10px;}
     
     /* Highlighted Method Box */
     .method-box { 
@@ -199,20 +201,49 @@ class PDBWrapper:
         except Exception: 
             return False
 
-    def get_available_chains(self) -> list:
+    def get_available_chains(self) -> List[str]:
+        """Get all available chains with their properties"""
         if not self.structure: 
             return []
-        try: 
-            return sorted([chain.id for chain in self.structure[0]])
+        try:
+            chains_info = []
+            for chain in self.structure[0]:
+                residue_count = len([r for r in chain if r.id[0] == " "])
+                chains_info.append({
+                    'id': chain.id,
+                    'residues': residue_count
+                })
+            return sorted(chains_info, key=lambda x: x['id'])
         except Exception: 
             return []
 
+    def get_chain_info(self, chain_id: str) -> Dict:
+        """Get detailed information about a specific chain"""
+        if not self.structure: 
+            return {}
+        try:
+            chain = self.structure[0][chain_id]
+            residues = [r for r in chain if r.id[0] == " "]
+            seq = self.get_sequence(chain_id)
+            coords = self.get_coordinates(chain_id)
+            
+            return {
+                'chain_id': chain_id,
+                'residue_count': len(residues),
+                'sequence_length': len(seq) if seq else 0,
+                'has_coordinates': coords is not None,
+                'sequence': seq
+            }
+        except Exception:
+            return {}
+
     def get_best_chain(self, requested_chain: str) -> Optional[str]:
         chains = self.get_available_chains()
-        if requested_chain in chains: 
+        chain_ids = [c['id'] for c in chains]
+        if requested_chain in chain_ids: 
             return requested_chain
-        if chains: 
-            return chains[0]
+        if chain_ids: 
+            return chain_ids[0]
         return None
 
     def get_coordinates(self, chain_id="A") -> Optional[np.ndarray]:
@@ -469,6 +500,7 @@ def render_3d_structure(pdb_content: str):
 st.title("🧬 ProCap Search Diagnostic Suite")
 st.markdown("##### High-Throughput Structural Homology & Functional Annotation Pipeline v3.0")
 st.markdown("##### **All THREE Methods: RMSD + Sequence Identity + Distance Matrix**")
+st.markdown("##### **Dynamic Multi-Chain Selection**")
 st.divider()
 
 tmp_root = Path(tempfile.gettempdir()) / "procap_professional"
@@ -477,8 +509,6 @@ db_dir = tmp_root / "db"; db_dir.mkdir(parents=True, exist_ok=True)
 
 with st.sidebar:
     st.header("⚙️ Pipeline Configuration")
-    st.markdown('<div class="info-box"><b>🔗 Chain Selection:</b><br>Select the chain to analyze.</div>', unsafe_allow_html=True)
-    chain_id = st.text_input("Target Chain ID", value="A", max_chars=1, help="Chain ID (A, B, C, etc.)").strip().upper() or "A"
     
     st.divider()
     st.markdown("### 🗄️ Database Management")
@@ -541,6 +571,69 @@ with tab1:
             pdb_id = None
         
         st.markdown("<br>", unsafe_allow_html=True)
+        
+        # Dynamic chain selection
+        st.markdown("### 🔗 Chain Selection")
+        
+        # First, we need to detect available chains
+        if st.button("📋 Detect Available Chains", use_container_width=True):
+            query_pdb_temp = None
+            
+            if query_mode == "RCSB PDB Database" and len(pdb_id) == 4:
+                query_pdb_temp = query_dir / f"{pdb_id}.pdb"
+                if not query_pdb_temp.exists():
+                    with st.spinner(f"Downloading {pdb_id}..."):
+                        if not download_pdb_by_id(pdb_id, query_pdb_temp): 
+                            query_pdb_temp = None
+            elif query_mode == "Local File Upload" and uploaded_query:
+                query_pdb_temp = query_dir / uploaded_query.name
+                query_pdb_temp.write_bytes(uploaded_query.getvalue())
+            
+            if query_pdb_temp and query_pdb_temp.exists():
+                pdb_wrapper = PDBWrapper(str(query_pdb_temp))
+                if pdb_wrapper.parse():
+                    chains_list = pdb_wrapper.get_available_chains()
+                    if chains_list:
+                        st.session_state['available_chains'] = chains_list
+                        st.session_state['query_pdb_path_temp'] = query_pdb_temp
+                        st.success(f"✅ Found {len(chains_list)} chains")
+                    else:
+                        st.error("❌ No chains found")
+                else:
+                    st.error("❌ Failed to parse PDB")
+        
+        # Display available chains
+        if 'available_chains' in st.session_state:
+            st.markdown("**Available Chains:**")
+            chains_list = st.session_state['available_chains']
+            
+            # Create chain selection buttons
+            cols = st.columns(min(len(chains_list), 6))
+            for idx, chain_info in enumerate(chains_list):
+                with cols[idx % 6]:
+                    chain_display = f"{chain_info['id']}\n({chain_info['residues']} res)"
+                    if st.button(chain_display, use_container_width=True, key=f"chain_{chain_info['id']}"):
+                        st.session_state['selected_chain'] = chain_info['id']
+                        st.success(f"✅ Selected Chain {chain_info['id']}")
+            
+            # Show selected chain
+            if 'selected_chain' in st.session_state:
+                st.markdown(f'<div class="chain-box">🎯 Selected Chain: <b>{st.session_state["selected_chain"]}</b></div>', unsafe_allow_html=True)
+                
+                # Show chain details
+                pdb_wrapper = PDBWrapper(str(st.session_state['query_pdb_path_temp']))
+                pdb_wrapper.parse()
+                chain_info = pdb_wrapper.get_chain_info(st.session_state['selected_chain'])
+                
+                if chain_info:
+                    with st.container(border=True):
+                        st.markdown("**Chain Details:**")
+                        info_col1, info_col2, info_col3 = st.columns(3)
+                        info_col1.metric("Residues", chain_info['residue_count'])
+                        info_col2.metric("Sequence Length", chain_info['sequence_length'])
+                        info_col3.metric("Has Coordinates", "✅ Yes" if chain_info['has_coordinates'] else "❌ No")
+        
+        st.markdown("<br>", unsafe_allow_html=True)
         execute_btn = st.button("▶ EXECUTE ALL 3 METHODS", type="primary", use_container_width=True)
     
     with col_results:
@@ -548,82 +641,77 @@ with tab1:
             if db_count == 0:
                 st.markdown('<div class="alert-low">❌ Database is empty! Initialize from sidebar.</div>', unsafe_allow_html=True)
             else:
-                query_pdb_path = None
-                if query_mode == "RCSB PDB Database" and len(pdb_id) == 4:
-                    query_pdb_path = query_dir / f"{pdb_id}.pdb"
-                    if not query_pdb_path.exists():
-                        with st.spinner(f"Downloading {pdb_id}..."):
-                            if not download_pdb_by_id(pdb_id, query_pdb_path): 
-                                query_pdb_path = None
-                elif query_mode == "Local File Upload" and uploaded_query:
-                    query_pdb_path = query_dir / uploaded_query.name
-                    query_pdb_path.write_bytes(uploaded_query.getvalue())
-                
-                if not query_pdb_path:
-                    st.error("❌ Failed to load Query Structure.")
+                if 'selected_chain' not in st.session_state:
+                    st.error("❌ Please select a chain first")
                 else:
-                    with st.spinner(f"🔬 Comparing against {db_count} database structures..."):
-                        results_df, diagnostics = run_comprehensive_diagnostic(query_pdb_path, db_dir, chain_id)
-                        
-                        qp = PDBWrapper(str(query_pdb_path))
-                        qp.parse()
-                        exp_meta = qp.get_experimental_metadata(diagnostics.get('resolved_chain', 'A'))
+                    query_pdb_path = st.session_state.get('query_pdb_path_temp')
+                    selected_chain = st.session_state.get('selected_chain', 'A')
                     
-                    if diagnostics["status"] == "error":
-                        st.markdown(f'<div class="alert-low">❌ ERROR: {diagnostics["message"]}</div>', unsafe_allow_html=True)
-                    elif results_df.empty:
-                        st.markdown('<div class="alert-low">⚠️ No homologous structures found in database.</div>', unsafe_allow_html=True)
+                    if not query_pdb_path:
+                        st.error("❌ Failed to load Query Structure.")
                     else:
-                        st.session_state['query_pdb_content'] = query_pdb_path.read_text()
-                        st.session_state['query_seq'] = qp.get_sequence(diagnostics.get('resolved_chain', 'A'))
-                        st.session_state['results_df'] = results_df
-                        st.session_state['resolved_chain'] = diagnostics.get('resolved_chain', 'A')
-                        
-                        top_hit = results_df.iloc[0]
-                        confidence, alert_class = classify_confidence_level(top_hit["Consensus_Score"])
-                        prediction = predict_biological_function(results_df)
-                        
-                        if diagnostics.get("chain_warning"): 
-                            st.warning(f"⚠️ {diagnostics['chain_warning']}")
-                        
-                        st.markdown(f'<div class="{alert_class}">🧬 CONSENSUS SCORE: {top_hit["Consensus_Score"]:.3f}/1.000 | {confidence}</div>', unsafe_allow_html=True)
-                        
-                        st.markdown("### 📊 Individual Method Scores (Top Hit)")
-                        method_col1, method_col2, method_col3 = st.columns(3)
-                        with method_col1: 
-                            st.markdown(f'<div class="method-box"><b>METHOD 1: RMSD</b><br>Score: {top_hit["RMSD_Score"]:.3f}<br>Value: {top_hit["RMSD_Å"]:.2f} Å</div>', unsafe_allow_html=True)
-                        with method_col2: 
-                            st.markdown(f'<div class="method-box"><b>METHOD 2: SEQUENCE</b><br>Score: {top_hit["Seq_Score"]:.3f}<br>Identity: {top_hit["Seq_Identity_%"]:.1f}%</div>', unsafe_allow_html=True)
-                        with method_col3: 
-                            st.markdown(f'<div class="method-box"><b>METHOD 3: TOPOLOGY</b><br>Score: {top_hit["DM_Correlation"]:.3f}<br>Corr: {top_hit["DM_Correlation"]:.3f}</div>', unsafe_allow_html=True)
-                        
-                        with st.container(border=True):
-                            st.markdown("### Biological Annotation")
-                            st.write(f"This query functions as a **{prediction['function']}**, belonging to **{prediction['family']}** family ({prediction['structure']}).")
-                            st.markdown("**Top Reference Hit**")
-                            col_top1, col_top2, col_top3 = st.columns(3)
-                            col_top1.write(f"**PDB ID:** `{top_hit['Target_PDB']}` (Chain {top_hit['Target_Chain']})\n\n**Organism:** {top_hit.get('Organism', 'Unknown')}")
-                            col_top2.write(f"**Gene:** {top_hit.get('Gene_Name', 'Unknown')}\n\n**Coverage:** {top_hit['Query_Coverage_%']:.1f}%")
-                            col_top3.write(f"**Function:** {top_hit.get('Function', 'Unknown')}\n\n**Family:** {top_hit.get('Protein_Family', 'Unknown')}")
-                        
-                        with st.container(border=True):
-                            st.markdown(f"### Structural & PhysChem Profile (Query Chain {diagnostics.get('resolved_chain', 'A')})")
-                            m1, m2, m3, m4 = st.columns(4)
-                            m1.metric("Length", f"{diagnostics.get('query_seq_length', 0)} AA")
-                            m2.metric("Mol. Weight", f"{diagnostics.get('mw_kda', 0):.1f} kDa")
-                            m3.metric("Isoelectric Pt", f"{diagnostics.get('pi', 0):.2f}")
-                            m4.metric("Instability Idx", f"{diagnostics.get('instability', 0):.1f}")
+                        with st.spinner(f"🔬 Comparing Chain {selected_chain} against {db_count} database structures..."):
+                            results_df, diagnostics = run_comprehensive_diagnostic(query_pdb_path, db_dir, selected_chain)
                             
-                            m5, m6, m7, m8 = st.columns(4)
-                            m5.metric("GRAVY", f"{diagnostics.get('gravy', 0):.3f}")
-                            m6.metric("Aromaticity", f"{diagnostics.get('aromaticity', 0):.3f}")
-                            m7.metric("Extinction Coeff.", f"{diagnostics.get('extinction_coeff', 0):.0f} M⁻¹cm⁻¹")
-                            m8.metric("X-Ray Resolution", f"{exp_meta.get('resolution', np.nan):.2f} Å" if not pd.isna(exp_meta.get('resolution', np.nan)) else "N/A")
+                            qp = PDBWrapper(str(query_pdb_path))
+                            qp.parse()
+                            exp_meta = qp.get_experimental_metadata(diagnostics.get('resolved_chain', 'A'))
                         
-                        st.markdown("### Search Results Matrix")
-                        st.markdown(f"**Found {len(results_df)} structurally viable matching structures in database.**")
-                        display_cols = ["Target_PDB", "Organism", "Consensus_Score", "Confidence", "RMSD_Score", "Seq_Score", "DM_Correlation", "Seq_Identity_%", "RMSD_Å"]
-                        st.dataframe(results_df[display_cols].head(15), use_container_width=True, hide_index=True)
+                        if diagnostics["status"] == "error":
+                            st.markdown(f'<div class="alert-low">❌ ERROR: {diagnostics["message"]}</div>', unsafe_allow_html=True)
+                        elif results_df.empty:
+                            st.markdown('<div class="alert-low">⚠️ No homologous structures found in database.</div>', unsafe_allow_html=True)
+                        else:
+                            st.session_state['query_pdb_content'] = query_pdb_path.read_text()
+                            st.session_state['query_seq'] = qp.get_sequence(diagnostics.get('resolved_chain', 'A'))
+                            st.session_state['results_df'] = results_df
+                            st.session_state['resolved_chain'] = diagnostics.get('resolved_chain', 'A')
+                            
+                            top_hit = results_df.iloc[0]
+                            confidence, alert_class = classify_confidence_level(top_hit["Consensus_Score"])
+                            prediction = predict_biological_function(results_df)
+                            
+                            if diagnostics.get("chain_warning"): 
+                                st.warning(f"⚠️ {diagnostics['chain_warning']}")
+                            
+                            st.markdown(f'<div class="{alert_class}">🧬 CONSENSUS SCORE: {top_hit["Consensus_Score"]:.3f}/1.000 | {confidence}</div>', unsafe_allow_html=True)
+                            
+                            st.markdown("### 📊 Individual Method Scores (Top Hit)")
+                            method_col1, method_col2, method_col3 = st.columns(3)
+                            with method_col1: 
+                                st.markdown(f'<div class="method-box"><b>METHOD 1: RMSD</b><br>Score: {top_hit["RMSD_Score"]:.3f}<br>Value: {top_hit["RMSD_Å"]:.2f} Å</div>', unsafe_allow_html=True)
+                            with method_col2: 
+                                st.markdown(f'<div class="method-box"><b>METHOD 2: SEQUENCE</b><br>Score: {top_hit["Seq_Score"]:.3f}<br>Identity: {top_hit["Seq_Identity_%"]:.1f}%</div>', unsafe_allow_html=True)
+                            with method_col3: 
+                                st.markdown(f'<div class="method-box"><b>METHOD 3: TOPOLOGY</b><br>Score: {top_hit["DM_Correlation"]:.3f}<br>Corr: {top_hit["DM_Correlation"]:.3f}</div>', unsafe_allow_html=True)
+                            
+                            with st.container(border=True):
+                                st.markdown("### Biological Annotation")
+                                st.write(f"This query functions as a **{prediction['function']}**, belonging to **{prediction['family']}** family ({prediction['structure']}).")
+                                st.markdown("**Top Reference Hit**")
+                                col_top1, col_top2, col_top3 = st.columns(3)
+                                col_top1.write(f"**PDB ID:** `{top_hit['Target_PDB']}` (Chain {top_hit['Target_Chain']})\n\n**Organism:** {top_hit.get('Organism', 'Unknown')}")
+                                col_top2.write(f"**Gene:** {top_hit.get('Gene_Name', 'Unknown')}\n\n**Coverage:** {top_hit['Query_Coverage_%']:.1f}%")
+                                col_top3.write(f"**Function:** {top_hit.get('Function', 'Unknown')}\n\n**Family:** {top_hit.get('Protein_Family', 'Unknown')}")
+                            
+                            with st.container(border=True):
+                                st.markdown(f"### Structural & PhysChem Profile (Query Chain {diagnostics.get('resolved_chain', 'A')})")
+                                m1, m2, m3, m4 = st.columns(4)
+                                m1.metric("Length", f"{diagnostics.get('query_seq_length', 0)} AA")
+                                m2.metric("Mol. Weight", f"{diagnostics.get('mw_kda', 0):.1f} kDa")
+                                m3.metric("Isoelectric Pt", f"{diagnostics.get('pi', 0):.2f}")
+                                m4.metric("Instability Idx", f"{diagnostics.get('instability', 0):.1f}")
+                                
+                                m5, m6, m7, m8 = st.columns(4)
+                                m5.metric("GRAVY", f"{diagnostics.get('gravy', 0):.3f}")
+                                m6.metric("Aromaticity", f"{diagnostics.get('aromaticity', 0):.3f}")
+                                m7.metric("Extinction Coeff.", f"{diagnostics.get('extinction_coeff', 0):.0f} M⁻¹cm⁻¹")
+                                m8.metric("X-Ray Resolution", f"{exp_meta.get('resolution', np.nan):.2f} Å" if not pd.isna(exp_meta.get('resolution', np.nan)) else "N/A")
+                            
+                            st.markdown("### Search Results Matrix")
+                            st.markdown(f"**Found {len(results_df)} structurally viable matching structures in database.**")
+                            display_cols = ["Target_PDB", "Target_Chain", "Organism", "Consensus_Score", "Confidence", "RMSD_Score", "Seq_Score", "DM_Correlation", "Seq_Identity_%", "RMSD_Å"]
+                            st.dataframe(results_df[display_cols].head(15), use_container_width=True, hide_index=True)
 
 # ==================================================
 # TAB 2: 3D VIEWER & ALIGNMENTS
@@ -686,6 +774,12 @@ with tab4:
     ```text
     Consensus = (0.33 × RMSD_Score) + (0.33 × Seq_Score) + (0.34 × DM_Score)
     ```
+    
+    ### Chain-Aware Analysis
+    - Automatically detects all chains (A, B, C, D, E...)
+    - Analyzes each chain separately
+    - Compares chains across structures
+    - Shows residue count and sequence length per chain
     """)
 
 # ==================================================
@@ -700,6 +794,6 @@ with tab5:
             title="Individual Method Contributions", template="plotly_dark", barmode="group"
         )
         st.plotly_chart(fig, use_container_width=True)
-        st.dataframe(results[["Target_PDB", "Organism", "Consensus_Score", "RMSD_Score", "Seq_Score", "DM_Correlation", "RMSD_Å", "Seq_Identity_%"]], use_container_width=True, hide_index=True)
+        st.dataframe(results[["Target_PDB", "Target_Chain", "Organism", "Consensus_Score", "RMSD_Score", "Seq_Score", "DM_Correlation", "RMSD_Å", "Seq_Identity_%"]], use_container_width=True, hide_index=True)
     else:
         st.info("Run diagnostic first")
