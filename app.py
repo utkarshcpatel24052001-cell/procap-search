@@ -160,8 +160,8 @@ def download_pdb_by_id(pdb_id: str, out_path: Path) -> bool:
 def get_advanced_physchem_properties(seq: str) -> Dict[str, float]:
     """Calculates advanced biochemical properties."""
     clean_seq = seq.replace("X", "").replace("U", "")
-    if len(clean_seq) < 2:
-        return {k: np.nan for k in ["mw_kda", "pi", "instability", "aromaticity", "gravy", "extinction_coeff"]}
+    default_props = {"mw_kda": np.nan, "pi": np.nan, "instability": np.nan, "aromaticity": np.nan, "gravy": np.nan, "extinction_coeff": np.nan}
+    if len(clean_seq) < 2: return default_props
     try:
         params = ProtParam.ProteinAnalysis(clean_seq)
         return {
@@ -172,7 +172,7 @@ def get_advanced_physchem_properties(seq: str) -> Dict[str, float]:
             "gravy": params.gravy(),
             "extinction_coeff": params.molar_extinction_coefficient()[0],
         }
-    except Exception: return {k: np.nan for k in ["mw_kda", "pi", "instability", "aromaticity", "gravy", "extinction_coeff"]}
+    except Exception: return default_props
 
 def classify_confidence_level(score: float) -> Tuple[str, str]:
     if score >= DIAGNOSTIC_THRESHOLDS["Identical"]: return "IDENTICAL MATCH", "alert-high"
@@ -308,7 +308,7 @@ with st.sidebar:
     st.header("⚙️ Pipeline Configuration")
     chain_id = st.text_input("Target Chain ID", value="A", max_chars=1, help="Biological assembly chain.")
     
-    st.markdown('<div class="info-box"><b>🗄️ Core Database:</b><br>Strictly utilizes 23 verified bacterial capsule proteins from known_capsule_proteins.csv.</div>', unsafe_allow_html=True)
+    st.markdown('<div class="info-box"><b>🗄️ Core Database:</b><br>Strictly utilizes verified bacterial capsule proteins from known_capsule_proteins.csv.</div>', unsafe_allow_html=True)
     if st.button("🔄 Initialize Local CSV Database", use_container_width=True):
         with st.spinner("📥 Syncing PDB structures from RCSB..."):
             for f in db_dir.glob("*.pdb"): f.unlink() # Clear DB
@@ -387,16 +387,16 @@ with tab1:
                         with st.container(border=True):
                             st.markdown("### Structural & PhysChem Profile (Query)")
                             m1, m2, m3, m4 = st.columns(4)
-                            m1.metric("Length", f"{diagnostics['query_seq_length']} AA")
-                            m2.metric("Mol. Weight", f"{diagnostics['query_mw_kda']:.1f} kDa")
-                            m3.metric("Isoelectric Pt", f"{diagnostics['query_pi']:.2f}")
-                            m4.metric("Instability Idx", f"{diagnostics['query_instability']:.1f}")
+                            m1.metric("Length", f"{diagnostics.get('query_seq_length', 0)} AA")
+                            m2.metric("Mol. Weight", f"{diagnostics.get('mw_kda', 0):.1f} kDa")
+                            m3.metric("Isoelectric Pt", f"{diagnostics.get('pi', 0):.2f}")
+                            m4.metric("Instability Idx", f"{diagnostics.get('instability', 0):.1f}")
                             
                             m5, m6, m7, m8 = st.columns(4)
-                            m5.metric("GRAVY", f"{diagnostics['query_gravy']:.3f}", help="Hydropathy. Positive = Hydrophobic. Negative = Soluble.")
-                            m6.metric("Extinction Coeff.", f"{diagnostics['extinction_coeff']:.0f}", help="M⁻¹ cm⁻¹")
-                            m7.metric("X-Ray Resolution", f"{exp_meta['resolution']:.2f} Å" if not pd.isna(exp_meta['resolution']) else "N/A")
-                            m8.metric("Mean B-Factor", f"{exp_meta['mean_b_factor']:.1f}" if not pd.isna(exp_meta['mean_b_factor']) else "N/A")
+                            m5.metric("GRAVY", f"{diagnostics.get('gravy', 0):.3f}", help="Hydropathy. Positive = Hydrophobic. Negative = Soluble.")
+                            m6.metric("Extinction Coeff.", f"{diagnostics.get('extinction_coeff', 0):.0f}", help="M⁻¹ cm⁻¹")
+                            m7.metric("X-Ray Resolution", f"{exp_meta.get('resolution', np.nan):.2f} Å" if not pd.isna(exp_meta.get('resolution', np.nan)) else "N/A")
+                            m8.metric("Mean B-Factor", f"{exp_meta.get('mean_b_factor', np.nan):.1f}" if not pd.isna(exp_meta.get('mean_b_factor', np.nan)) else "N/A")
                         
                         st.markdown("### Search Results Topology Matrix")
                         display_cols = ["Target_PDB", "Organism", "Protein_Family", "Consensus_Score", "Confidence", "Seq_Identity_%", "RMSD_Å"]
