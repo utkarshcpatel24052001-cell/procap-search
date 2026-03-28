@@ -20,7 +20,7 @@ import streamlit as st
 import streamlit.components.v1 as components
 import py3Dmol
 from Bio import pairwise2
-from Bio.PDB import PDBParser as BioPDBParser, PPBuilder
+from Bio.PDB import PDBParser as BioPDBParser
 from Bio.SeqUtils import ProtParam
 from scipy.spatial.distance import cdist
 
@@ -73,6 +73,7 @@ st.markdown(
     .alert-low { background-color: #330000; border-left: 6px solid #ff0000; padding: 16px; border-radius: 6px; color: #ff3333; font-weight: 600; margin-bottom: 15px;}
     .info-box { background-color: #001133; border-left: 6px solid #3399ff; padding: 16px; border-radius: 6px; color: #3399ff; font-weight: 600; margin-bottom: 15px;}
     .success-box { background-color: #001a00; border-left: 6px solid #00ff00; padding: 16px; border-radius: 6px; color: #00ff00; font-weight: 600; margin-bottom: 15px;}
+    .method-box { background-color: #1a1a2e; border-left: 6px solid #16c784; padding: 16px; border-radius: 6px; color: #16c784; font-weight: 600; margin-bottom: 15px; font-family: 'Courier New', monospace;}
 
     /* Sequence Alignment Box */
     .seq-align-box {
@@ -220,6 +221,13 @@ def distance_matrix_correlation(dm1: np.ndarray, dm2: np.ndarray) -> float:
 def calculate_sequence_identity(seqA: str, seqB: str) -> Tuple[float, int]:
     """METHOD 2: Sequence Identity Alignment (Needleman-Wunsch)"""
     try:
+        # Fix: Ensure sequences are strings
+        seqA = str(seqA).strip()
+        seqB = str(seqB).strip()
+        
+        if not seqA or not seqB:
+            return 0.0, 0
+        
         alns = pairwise2.align.globalxx(seqA, seqB, one_alignment_only=True)
         if not alns:
             return 0.0, 0
@@ -228,7 +236,8 @@ def calculate_sequence_identity(seqA: str, seqB: str) -> Tuple[float, int]:
         s_score = matches / max(len(seqA), len(seqB))
         aligned_length = len(a.seqA)
         return float(s_score), aligned_length
-    except Exception:
+    except Exception as e:
+        st.warning(f"Sequence alignment error: {str(e)}")
         return 0.0, 0
 
 def download_pdb_by_id(pdb_id: str, out_path: Path) -> bool:
@@ -436,32 +445,46 @@ def predict_biological_function(results_df: pd.DataFrame) -> dict:
 # ==================================================
 def generate_alignment_visualization(seqA: str, seqB: str, blocksize: int = 60) -> str:
     """Generate sequence alignment with all three methods info"""
-    alns = pairwise2.align.globalxx(seqA, seqB, one_alignment_only=True)
-    if not alns:
-        return "<p>Alignment failed.</p>"
-    a = alns[0]
-    
-    html = '<div class="seq-align-box">\n'
-    for i in range(0, len(a.seqA), blocksize):
-        match_line = "".join([
-            "|" if a.seqA[j] == a.seqB[j] and a.seqA[j] != "-" else
-            "." if a.seqA[j] != "-" and a.seqB[j] != "-" else " "
-            for j in range(i, min(i + blocksize, len(a.seqA)))
-        ])
-        html += f"<span style='color:#66b3ff; font-weight:bold;'>Query: </span> {a.seqA[i:i+blocksize]}\n"
-        html += f"<span style='color:#00ff00; font-weight:bold;'>Match: </span> {match_line}\n"
-        html += f"<span style='color:#ff3333; font-weight:bold;'>Target:</span> {a.seqB[i:i+blocksize]}\n\n"
-    html += '</div>'
-    return html
+    try:
+        # Ensure sequences are proper strings
+        seqA = str(seqA).strip()
+        seqB = str(seqB).strip()
+        
+        if not seqA or not seqB:
+            return "<p style='color:#ff3333;'>Alignment error: Empty sequence</p>"
+        
+        alns = pairwise2.align.globalxx(seqA, seqB, one_alignment_only=True)
+        if not alns:
+            return "<p style='color:#ff3333;'>No alignment found</p>"
+        a = alns[0]
+        
+        html = '<div class="seq-align-box">\n'
+        for i in range(0, len(a.seqA), blocksize):
+            match_line = "".join([
+                "|" if a.seqA[j] == a.seqB[j] and a.seqA[j] != "-" else
+                "." if a.seqA[j] != "-" and a.seqB[j] != "-" else " "
+                for j in range(i, min(i + blocksize, len(a.seqA)))
+            ])
+            html += f"<span style='color:#66b3ff; font-weight:bold;'>Query: </span> {a.seqA[i:i+blocksize]}\n"
+            html += f"<span style='color:#00ff00; font-weight:bold;'>Match: </span> {match_line}\n"
+            html += f"<span style='color:#ff3333; font-weight:bold;'>Target:</span> {a.seqB[i:i+blocksize]}\n\n"
+        html += '</div>'
+        return html
+    except Exception as e:
+        return f"<p style='color:#ff3333;'>Alignment Error: {str(e)}</p>"
 
 def render_3d_structure(pdb_content: str):
     """Render 3D structure with dark background"""
-    view = py3Dmol.view(width=800, height=450)
-    view.addModel(pdb_content, 'pdb')
-    view.setStyle({'cartoon': {'color': 'spectrum'}})
-    view.setBackgroundColor('#000000')
-    view.zoomTo()
-    return view
+    try:
+        view = py3Dmol.view(width=800, height=450)
+        view.addModel(pdb_content, 'pdb')
+        view.setStyle({'cartoon': {'color': 'spectrum'}})
+        view.setBackgroundColor('#000000')
+        view.zoomTo()
+        return view
+    except Exception as e:
+        st.error(f"3D Viewer Error: {str(e)}")
+        return None
 
 # ==================================================
 # 6. APPLICATION UI
@@ -573,6 +596,7 @@ with tab1:
                         )
                     else:
                         st.session_state['query_pdb_content'] = query_pdb_path.read_text()
+                        st.session_state['query_seq'] = qp.get_sequence(chain_id)
                         st.session_state['results_df'] = results_df
                         
                         top_hit = results_df.iloc[0]
@@ -582,10 +606,47 @@ with tab1:
                         prediction = predict_biological_function(results_df)
                         
                         st.markdown(
-                            f'<div class="{alert_class}">🧬 CONFIDENCE: {confidence} | '
-                            f'Consensus Score: {top_hit["Consensus_Score"]:.3f}/1.000</div>',
+                            f'<div class="{alert_class}">🧬 CONSENSUS SCORE: {top_hit["Consensus_Score"]:.3f}/1.000 | {confidence}</div>',
                             unsafe_allow_html=True
                         )
+                        
+                        # ===== DISPLAY ALL THREE METHODS RESULTS =====
+                        st.markdown("### 📊 Individual Method Scores (Top Hit)")
+                        
+                        method_col1, method_col2, method_col3 = st.columns(3)
+                        
+                        with method_col1:
+                            st.markdown(
+                                f'<div class="method-box">'
+                                f'<b>METHOD 1: RMSD</b><br>'
+                                f'Score: {top_hit["RMSD_Score"]:.3f}/1.000<br>'
+                                f'RMSD Value: {top_hit["RMSD_Å"]:.2f} Å<br>'
+                                f'<small>Structural alignment quality</small>'
+                                f'</div>',
+                                unsafe_allow_html=True
+                            )
+                        
+                        with method_col2:
+                            st.markdown(
+                                f'<div class="method-box">'
+                                f'<b>METHOD 2: SEQUENCE</b><br>'
+                                f'Score: {top_hit["Seq_Score"]:.3f}/1.000<br>'
+                                f'Identity: {top_hit["Seq_Identity_%"]:.1f}%<br>'
+                                f'<small>Evolutionary conservation</small>'
+                                f'</div>',
+                                unsafe_allow_html=True
+                            )
+                        
+                        with method_col3:
+                            st.markdown(
+                                f'<div class="method-box">'
+                                f'<b>METHOD 3: TOPOLOGY</b><br>'
+                                f'Score: {top_hit["DM_Correlation"]:.3f}/1.000<br>'
+                                f'Corr: {top_hit["DM_Correlation"]:.3f}<br>'
+                                f'<small>Distance matrix correlation</small>'
+                                f'</div>',
+                                unsafe_allow_html=True
+                            )
                         
                         with st.container(border=True):
                             st.markdown("### Biological Annotation")
@@ -605,13 +666,12 @@ with tab1:
                                 f"**Coverage:** {top_hit['Query_Coverage_%']:.1f}%"
                             )
                             col_top3.write(
-                                f"**Seq Identity:** {top_hit['Seq_Identity_%']:.1f}%\n\n"
-                                f"**RMSD:** {top_hit['RMSD_Å']:.2f} Å"
-                                if not pd.isna(top_hit['RMSD_Å']) else "**RMSD:** N/A"
+                                f"**Function:** {top_hit.get('Function', 'Unknown')}\n\n"
+                                f"**Family:** {top_hit.get('Protein_Family', 'Unknown')}"
                             )
                         
                         with st.container(border=True):
-                            st.markdown("### Structural & PhysChem Profile")
+                            st.markdown("### Structural & PhysChem Profile (Query)")
                             m1, m2, m3, m4 = st.columns(4)
                             m1.metric(
                                 "Length",
@@ -679,7 +739,8 @@ with tab2:
             st.caption("Color-coded by secondary structure. Use mouse to rotate/zoom.")
             with st.container(border=True):
                 view = render_3d_structure(st.session_state['query_pdb_content'])
-                components.html(view._make_html(), height=480)
+                if view:
+                    components.html(view._make_html(), height=480)
         
         with colseq:
             if 'results_df' in st.session_state and not st.session_state['results_df'].empty:
@@ -687,28 +748,22 @@ with tab2:
                 st.markdown(f"### Alignment vs {top['Target_PDB']}")
                 st.caption("BioPython Global Alignment (| = Exact Match)")
                 
-                qp = PDBWrapper("temp.pdb")
-                qp.structure = BioPDBParser(QUIET=True).get_structure(
-                    "tmp", io.StringIO(st.session_state['query_pdb_content'])
-                )
-                qseq = qp.get_sequence(chain_id)
-                
-                align_html = generate_alignment_visualization(
-                    qseq, top['Target_Seq'], blocksize=40
-                )
-                st.markdown(align_html, unsafe_allow_html=True)
-                
-                st.markdown("<br>", unsafe_allow_html=True)
-                fasta_str = (
-                    f">Query\n{qseq}\n>Target_{top['Target_PDB']}\n{top['Target_Seq']}\n"
-                )
-                st.download_button(
-                    "📥 Export FASTA Alignment",
-                    data=fasta_str,
-                    file_name=f"alignment_{top['Target_PDB']}.fasta",
-                    mime="text/plain",
-                    use_container_width=True
-                )
+                qseq = st.session_state.get('query_seq')
+                if qseq and top.get('Target_Seq'):
+                    align_html = generate_alignment_visualization(qseq, top['Target_Seq'], blocksize=40)
+                    st.markdown(align_html, unsafe_allow_html=True)
+                    
+                    st.markdown("<br>", unsafe_allow_html=True)
+                    fasta_str = (
+                        f">Query\n{qseq}\n>Target_{top['Target_PDB']}\n{top['Target_Seq']}\n"
+                    )
+                    st.download_button(
+                        "📥 Export FASTA Alignment",
+                        data=fasta_str,
+                        file_name=f"alignment_{top['Target_PDB']}.fasta",
+                        mime="text/plain",
+                        use_container_width=True
+                    )
     else:
         st.markdown(
             '<div class="info-box">💡 Execute diagnostic in Tab 1 to generate 3D models.</div>',
@@ -751,24 +806,27 @@ with tab4:
     ### Method 1: RMSD-Based Structural Superposition
     **What:** Root Mean Square Deviation of alpha-carbon backbone atoms
     - **Range:** 0–10 Å (normalized to 0–1 score)
+    - **Formula:** `Score = max(0, 1 - RMSD/10)`
     - **Strength:** Direct 3D geometric measurement, physics-grounded
     - **Limitation:** Requires identical coordinate counts
     
     ### Method 2: Sequence Identity (Needleman-Wunsch Global Alignment)
     **What:** Evolutionary primary structure conservation
-    - **Range:** 0–100% identity
+    - **Range:** 0–100% identity (0–1 score)
+    - **Formula:** `Score = Matching_Residues / max(Seq_A, Seq_B)`
     - **Strength:** Detects remote homologs, evolutionary relationships
     - **Limitation:** Low sensitivity for divergent sequences (< 20% identity)
     
     ### Method 3: Distance Matrix Topology Correlation
     **What:** Pearson correlation of pairwise Euclidean distances
     - **Range:** -1 to +1 (normalized to 0–1)
+    - **Formula:** `Score = (Correlation + 1) / 2`
     - **Strength:** Topology-based, resilient to loop variations
     - **Limitation:** Requires matching coordinate counts
     
     ### Consensus Scoring Formula:
     ```
-    Consensus_Score = (0.33 × RMSD_Score) + (0.33 × Seq_Identity) + (0.34 × DM_Correlation)
+    Consensus_Score = (0.33 × RMSD_Score) + (0.33 × Seq_Score) + (0.34 × DM_Score)
     ```
     
     ### Confidence Classification:
