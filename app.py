@@ -1,7 +1,7 @@
 """
 ProCap Search Professional Diagnostic Suite v3.0
 High-Throughput Structural Homology & Functional Annotation Pipeline
-Production-Grade Bioinformatics Application
+Production-Grade Bioinformatics Application (Dark Mode Edition)
 Author: Utkarsh Patel
 """
 
@@ -25,7 +25,7 @@ from Bio.SeqUtils import ProtParam
 from scipy.spatial.distance import cdist
 
 # ==================================================
-# 1. PAGE CONFIG & PROFESSIONAL STYLING
+# 1. PAGE CONFIG & DARK MODE STYLING
 # ==================================================
 st.set_page_config(
     page_title="ProCap Professional | v3.0",
@@ -34,148 +34,71 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-# ========================================
-# 🎨 COLOR CUSTOMIZATION - WHITE BG, BLACK TEXT
-# ========================================
-PRIMARY_COLOR = "#0d47a1"           # Dark blue for headers
-PRIMARY_LIGHT = "#e3f2fd"           # Light blue backgrounds
-TEXT_COLOR = "#000000"              # Pure black text
-BG_COLOR = "#ffffff"               # Pure white background
-SECONDARY_BG = "#f5f5f5"           # Light gray alternate rows
-BORDER_COLOR = "#cccccc"           # Gray borders
-SUCCESS_COLOR = "#16a34a"          # Green
-WARNING_COLOR = "#d97706"          # Orange
-ERROR_COLOR = "#dc2626"            # Red
-HOVER_COLOR = "#f0f7ff"            # Light blue hover
-
-# Modern LIMS CSS - Clean Sans-Serif, High Contrast, Card-based
 st.markdown(
-    f"""
+    """
     <style>
-    /* Set page background to white */
-    .stApp {{
-        background-color: {BG_COLOR} !important;
-    }}
+    /* Global Dark Background and White Text */
+    html, body, [class*="css"], .stApp {
+        background-color: #000000 !important;
+        color: #ffffff !important;
+    }
     
-    /* Clean, modern typography for dense data dashboards */
-    html, body, .stMarkdown, p, li, span, label {{
+    html, body, .stMarkdown, p, li, span, label {
         font-family: "Segoe UI", "Inter", "Helvetica Neue", sans-serif !important;
         font-size: 16px !important;
-        color: {TEXT_COLOR} !important;
-    }}
+        color: #ffffff !important;
+    }
     
-    /* Headers */
-    h1, h2, h3, h4 {{ 
-        color: {PRIMARY_COLOR} !important; 
-        font-weight: 700 !important; 
-    }}
-    h3 {{ 
-        font-size: 20px !important; 
-        border-bottom: 2px solid {BORDER_COLOR}; 
-        padding-bottom: 8px;
-    }}
+    /* Headers in Red */
+    h1, h2, h3, h4 { color: #ff3333 !important; font-weight: 700 !important; }
+    h3 { font-size: 20px !important; border-bottom: 1px solid #333333; padding-bottom: 8px;}
 
     /* Metric Cards */
-    div[data-testid="stMetricLabel"] p {{
+    div[data-testid="stMetricLabel"] p {
         font-size: 13px !important;
         font-weight: 700 !important;
-        color: {TEXT_COLOR} !important;
+        color: #cccccc !important;
         text-transform: uppercase;
         letter-spacing: 0.05em;
-    }}
-    div[data-testid="stMetricValue"] {{
+    }
+    div[data-testid="stMetricValue"] {
         font-size: 32px !important;
         font-weight: 800 !important;
-        color: {PRIMARY_COLOR} !important;
-    }}
+        color: #ff3333 !important;
+    }
 
-    /* Status Banners */
-    .alert-high {{ 
-        background-color: #f0fdf4; 
-        border-left: 6px solid {SUCCESS_COLOR}; 
-        padding: 16px; 
-        border-radius: 6px; 
-        color: #166534; 
-        font-weight: 600; 
-        margin-bottom: 15px;
-    }}
-    .alert-medium {{ 
-        background-color: #fffbeb; 
-        border-left: 6px solid {WARNING_COLOR}; 
-        padding: 16px; 
-        border-radius: 6px; 
-        color: #92400e; 
-        font-weight: 600; 
-        margin-bottom: 15px;
-    }}
-    .alert-low {{ 
-        background-color: #fef2f2; 
-        border-left: 6px solid {ERROR_COLOR}; 
-        padding: 16px; 
-        border-radius: 6px; 
-        color: #991b1b; 
-        font-weight: 600; 
-        margin-bottom: 15px;
-    }}
-    .info-box {{ 
-        background-color: {PRIMARY_LIGHT}; 
-        border-left: 6px solid {PRIMARY_COLOR}; 
-        padding: 16px; 
-        border-radius: 6px; 
-        color: {PRIMARY_COLOR}; 
-        font-weight: 600; 
-        margin-bottom: 15px;
-    }}
+    /* Status Banners for Dark Mode */
+    .alert-high { background-color: #002200; border-left: 6px solid #00ff00; padding: 16px; border-radius: 6px; color: #00ff00; font-weight: 600; margin-bottom: 15px;}
+    .alert-medium { background-color: #331a00; border-left: 6px solid #ffa500; padding: 16px; border-radius: 6px; color: #ffa500; font-weight: 600; margin-bottom: 15px;}
+    .alert-low { background-color: #330000; border-left: 6px solid #ff0000; padding: 16px; border-radius: 6px; color: #ff3333; font-weight: 600; margin-bottom: 15px;}
+    .info-box { background-color: #001133; border-left: 6px solid #3399ff; padding: 16px; border-radius: 6px; color: #3399ff; font-weight: 600; margin-bottom: 15px;}
 
     /* Sequence Alignment Box */
-    .seq-align-box {{
+    .seq-align-box {
         font-family: 'Fira Code', 'Courier New', monospace !important;
-        background-color: {BG_COLOR};
+        background-color: #111111;
         padding: 16px;
         border-radius: 6px;
-        border: 2px solid {BORDER_COLOR};
+        border: 1px solid #333333;
         overflow-x: auto;
         font-size: 14px !important;
         line-height: 1.4 !important;
         white-space: pre !important;
-        color: {TEXT_COLOR};
-    }}
+        color: #ffffff;
+    }
     
-    .stButton > button {{ 
+    /* Buttons */
+    .stButton > button { 
         font-weight: 600 !important; 
         border-radius: 6px !important; 
-        color: {BG_COLOR} !important;
-        background-color: {PRIMARY_COLOR} !important;
-    }}
-    
-    /* Sidebar background */
-    section[data-testid="stSidebar"] {{
-        background-color: {SECONDARY_BG} !important;
-    }}
-    
-    section[data-testid="stSidebar"] * {{
-        color: {TEXT_COLOR} !important;
-    }}
-    
-    /* Container borders */
-    .stContainer {{
-        background-color: {BG_COLOR} !important;
-        border: 2px solid {BORDER_COLOR} !important;
-        border-radius: 8px !important;
-        padding: 16px !important;
-    }}
-    
-    /* Dataframe styling */
-    .stDataFrame {{
-        background-color: {BG_COLOR} !important;
-    }}
-    
-    /* Tab styling */
-    button[data-baseweb="tab"] {{
-        color: {TEXT_COLOR} !important;
-        font-weight: 600 !important;
-    }}
-    
+        background-color: #222222 !important;
+        color: #ffffff !important;
+        border: 1px solid #ff3333 !important;
+    }
+    .stButton > button:hover {
+        background-color: #ff3333 !important;
+        color: #000000 !important;
+    }
     </style>
     """,
     unsafe_allow_html=True,
@@ -194,7 +117,6 @@ THREE_TO_ONE = {
 DIAGNOSTIC_THRESHOLDS = {"Identical": 0.90, "Highly_Similar": 0.75, "Moderately_Similar": 0.55}
 
 class PDBWrapper:
-    """Professional PDB parser with robust error handling"""
     def __init__(self, pdb_path: str):
         self.pdb_path = Path(pdb_path)
         self.parser = BioPDBParser(QUIET=True)
@@ -251,14 +173,11 @@ def download_pdb_by_id(pdb_id: str, out_path: Path) -> bool:
     except Exception: return False
 
 def get_advanced_physchem_properties(seq: str) -> Dict[str, float]:
-    """Calculates advanced biochemical properties."""
     clean_seq = seq.replace("X", "").replace("U", "")
     default_props = {"mw_kda": np.nan, "pi": np.nan, "instability": np.nan, "aromaticity": np.nan, "gravy": np.nan, "extinction_coeff": np.nan}
     if len(clean_seq) < 2: return default_props
     try:
         params = ProtParam.ProteinAnalysis(clean_seq)
-        
-        # Compute pI safely
         pi = np.nan
         try:
             from Bio.SeqUtils.IsoelectricPoint import IsoelectricPoint
@@ -320,13 +239,11 @@ def run_comprehensive_diagnostic(query_pdb: Path, db_dir: Path, chain_id: str) -
         dcoords, dseq = dp.get_coordinates(chain_id), dp.get_sequence(chain_id)
         if dcoords is None or not dseq: continue
         
-        # 1. RMSD
         rmsd_val, r_score = np.nan, 0.0
         if len(qcoords) == len(dcoords):
             rmsd_val = calculate_rmsd(qcoords, dcoords)
             if rmsd_val is not None: r_score = max(0.0, 1.0 - (rmsd_val / 10.0))
         
-        # 2. Sequence Alignment
         alns = pairwise2.align.globalxx(qseq, dseq, one_alignment_only=True)
         s_score, aligned_length = 0.0, 0
         if alns:
@@ -334,7 +251,6 @@ def run_comprehensive_diagnostic(query_pdb: Path, db_dir: Path, chain_id: str) -
             s_score = sum(x == y for x, y in zip(a.seqA, a.seqB)) / max(len(qseq), len(dseq))
             aligned_length = len(a.seqA)
         
-        # 3. Distance Matrix
         d_score = 0.0
         if qdm.shape == calculate_distance_matrix(dcoords).shape:
             d_score = (distance_matrix_correlation(qdm, calculate_distance_matrix(dcoords)) + 1.0) / 2.0
@@ -356,10 +272,7 @@ def run_comprehensive_diagnostic(query_pdb: Path, db_dir: Path, chain_id: str) -
         df = df.merge(ref_meta, left_on="Target_PDB", right_on="PDB_ID", how="inner").drop("PDB_ID", axis=1)
         df = df.sort_values("Consensus_Score", ascending=False).reset_index(drop=True)
     
-    diagnostics = {
-        "status": "success", "query_seq_length": len(qseq), "total_matches": len(results),
-        **physchem_query
-    }
+    diagnostics = {"status": "success", "query_seq_length": len(qseq), "total_matches": len(results), **physchem_query}
     return df, diagnostics
 
 def predict_biological_function(results_df: pd.DataFrame) -> dict:
@@ -371,7 +284,7 @@ def predict_biological_function(results_df: pd.DataFrame) -> dict:
     }
 
 # ==================================================
-# 4. VISUALIZATION ENGINES
+# 4. VISUALIZATION ENGINES (Dark Mode Adjusted)
 # ==================================================
 def generate_alignment_visualization(seqA: str, seqB: str, blocksize: int = 60) -> str:
     alns = pairwise2.align.globalxx(seqA, seqB, one_alignment_only=True)
@@ -381,9 +294,9 @@ def generate_alignment_visualization(seqA: str, seqB: str, blocksize: int = 60) 
     html = '<div class="seq-align-box">\n'
     for i in range(0, len(a.seqA), blocksize):
         match_line = "".join(["|" if a.seqA[j] == a.seqB[j] and a.seqA[j] != "-" else "." if a.seqA[j] != "-" and a.seqB[j] != "-" else " " for j in range(i, min(i + blocksize, len(a.seqA)))])
-        html += f"<span style='color:#0d47a1; font-weight:bold;'>Query: </span> {a.seqA[i:i+blocksize]}\n"
-        html += f"<span style='color:#16a34a; font-weight:bold;'>Match: </span> {match_line}\n"
-        html += f"<span style='color:#dc2626; font-weight:bold;'>Target:</span> {a.seqB[i:i+blocksize]}\n\n"
+        html += f"<span style='color:#66b3ff; font-weight:bold;'>Query: </span> {a.seqA[i:i+blocksize]}\n"
+        html += f"<span style='color:#00ff00; font-weight:bold;'>Match: </span> {match_line}\n"
+        html += f"<span style='color:#ff3333; font-weight:bold;'>Target:</span> {a.seqB[i:i+blocksize]}\n\n"
     html += '</div>'
     return html
 
@@ -391,7 +304,7 @@ def render_3d_structure(pdb_content: str):
     view = py3Dmol.view(width=800, height=450)
     view.addModel(pdb_content, 'pdb')
     view.setStyle({'cartoon': {'color': 'spectrum'}})
-    view.setBackgroundColor('#ffffff')
+    view.setBackgroundColor('#000000') # Dark background for 3D viewer
     view.zoomTo()
     return view
 
@@ -413,7 +326,7 @@ with st.sidebar:
     st.markdown('<div class="info-box"><b>🗄️ Core Database:</b><br>Strictly utilizes verified bacterial capsule proteins from known_capsule_proteins.csv.</div>', unsafe_allow_html=True)
     if st.button("🔄 Initialize Local CSV Database", use_container_width=True):
         with st.spinner("📥 Syncing PDB structures from RCSB..."):
-            for f in db_dir.glob("*.pdb"): f.unlink() # Clear DB
+            for f in db_dir.glob("*.pdb"): f.unlink() 
             d = build_database_from_reference_pdb_ids(db_dir, REFERENCE_DF["PDB_ID"].dropna().astype(str).tolist())
             st.success(f"✅ Database Ready: {len(d)} verified structures loaded.")
 
@@ -546,8 +459,8 @@ with tab3:
     st.subheader("Database Population Analytics")
     if not REFERENCE_DF.empty:
         c1, c2 = st.columns(2)
-        with c1: st.plotly_chart(px.pie(REFERENCE_DF, names="Organism", title="Pathogen Representation", hole=0.3), use_container_width=True)
-        with c2: st.plotly_chart(px.bar(REFERENCE_DF["Protein_Family"].value_counts().reset_index(), x="Protein_Family", y="count", title="Domain Families"), use_container_width=True)
+        with c1: st.plotly_chart(px.pie(REFERENCE_DF, names="Organism", title="Pathogen Representation", hole=0.3, template="plotly_dark"), use_container_width=True)
+        with c2: st.plotly_chart(px.bar(REFERENCE_DF["Protein_Family"].value_counts().reset_index(), x="Protein_Family", y="count", title="Domain Families", template="plotly_dark"), use_container_width=True)
         st.dataframe(REFERENCE_DF, use_container_width=True, hide_index=True)
 
 with tab4:
