@@ -416,4 +416,77 @@ with tab1:
                             col_top1, col_top2, col_top3 = st.columns(3)
                             col_top1.write(f"**PDB ID:** `{top_hit['Target_PDB']}`\n\n**Organism:** {top_hit.get('Organism', 'Custom Upload')}")
                             col_top2.write(f"**Gene:** {top_hit.get('Gene_Name', 'Unknown')}\n\n**Coverage:** {top_hit['Query_Coverage_%']:.1f}%")
-                            col_top3.write(f"**Seq Identity:** {top_hit['Seq
+                            col_top3.write(f"**Seq Identity:** {top_hit['Seq_Identity_%']:.1f}%\n\n**RMSD:** {top_hit['RMSD_Å']:.2f} Å" if not pd.isna(top_hit['RMSD_Å']) else "**RMSD:** N/A")
+                        
+                        with st.container(border=True):
+                            st.markdown("### Structural & PhysChem Profile (Query)")
+                            m1, m2, m3, m4 = st.columns(4)
+                            m1.metric("Length", f"{diagnostics['query_seq_length']} AA")
+                            m2.metric("Mol. Weight", f"{diagnostics['query_mw_kda']:.1f} kDa")
+                            m3.metric("Isoelectric Pt", f"{diagnostics['query_pi']:.2f}")
+                            m4.metric("Instability Idx", f"{diagnostics['query_instability']:.1f}")
+                            
+                            m5, m6, m7, m8 = st.columns(4)
+                            m5.metric("GRAVY", f"{diagnostics['query_gravy']:.3f}", help="Hydropathy. Positive = Hydrophobic (membrane). Negative = Soluble.")
+                            m6.metric("Extinction Coeff.", f"{diagnostics['extinction_coeff']:.0f}", help="M⁻¹ cm⁻¹")
+                            m7.metric("X-Ray Resolution", f"{exp_meta['resolution']:.2f} Å" if not pd.isna(exp_meta['resolution']) else "N/A")
+                            m8.metric("Mean B-Factor", f"{exp_meta['mean_b_factor']:.1f}" if not pd.isna(exp_meta['mean_b_factor']) else "N/A")
+                        
+                        st.markdown("### Search Results Topology Matrix")
+                        display_cols = ["Target_PDB", "Organism", "Protein_Family", "Consensus_Score", "Confidence", "Seq_Identity_%", "RMSD_Å"]
+                        st.dataframe(results_df[display_cols].head(15), use_container_width=True, hide_index=True)
+
+# ==================================================
+# TAB 2: 3D VIEWER & ALIGNMENTS
+# ==================================================
+with tab2:
+    st.subheader("3D Structure Visualization & Sequence Interrogation")
+    
+    if 'query_pdb_content' in st.session_state:
+        col3d, colseq = st.columns([1.3, 1], gap="large")
+        
+        with col3d:
+            st.markdown("### Interactive 3D Query Topology")
+            st.caption("Color-coded by secondary structure. Use mouse to rotate/zoom.")
+            with st.container(border=True):
+                view = render_3d_structure(st.session_state['query_pdb_content'])
+                components.html(view._make_html(), height=480)
+        
+        with colseq:
+            if 'results_df' in st.session_state and not st.session_state['results_df'].empty:
+                top = st.session_state['results_df'].iloc[0]
+                st.markdown(f"### Alignment vs {top['Target_PDB']}")
+                st.caption("BioPython Global Alignment (| = Exact Match)")
+                
+                qp = PDBWrapper("temp.pdb")
+                qp.structure = BioPDBParser(QUIET=True).get_structure("tmp", io.StringIO(st.session_state['query_pdb_content']))
+                qseq = qp.get_sequence(chain_id)
+                
+                align_html = generate_alignment_visualization(qseq, top['Target_Seq'], blocksize=40)
+                st.markdown(align_html, unsafe_allow_html=True)
+                
+                st.markdown("<br>", unsafe_allow_html=True)
+                fasta_str = f">Query\n{qseq}\n>Target_{top['Target_PDB']}\n{top['Target_Seq']}\n"
+                st.download_button("📥 Export FASTA Alignment", data=fasta_str, file_name=f"alignment_{top['Target_PDB']}.fasta", mime="text/plain", use_container_width=True)
+    else:
+        st.markdown('<div class="info-box">💡 Execute a diagnostic in Tab 1 to generate 3D models and alignments.</div>', unsafe_allow_html=True)
+
+# ==================================================
+# TAB 3 & 4: ANALYTICS & DOCS
+# ==================================================
+with tab3:
+    st.subheader("Database Population Analytics")
+    if not REFERENCE_DF.empty:
+        c1, c2 = st.columns(2)
+        with c1: st.plotly_chart(px.pie(REFERENCE_DF, names="Organism", title="Pathogen Representation", hole=0.3), use_container_width=True)
+        with c2: st.plotly_chart(px.bar(REFERENCE_DF["Protein_Family"].value_counts().reset_index(), x="Protein_Family", y="count", title="Domain Families"), use_container_width=True)
+        st.dataframe(REFERENCE_DF, use_container_width=True, hide_index=True)
+
+with tab4:
+    st.subheader("Algorithm Specifications")
+    st.markdown("""
+    **1. RMSD-Based Superposition:** Physics-based 3D geometric measurement across alpha-carbons.
+    **2. Sequence Identity:** Evolutionary primary structure alignment via global pairing.
+    **3. Distance Matrix Topology:** Internal Euclidian correlation, heavily resilient to structural loop mutations and insertions.
+    **Consensus Equation:** `(0.33 × RMSD_Norm) + (0.33 × SeqID) + (0.34 × Distance_Matrix_Corr)`
+    """)
