@@ -131,6 +131,7 @@ st.markdown(
 # ==================================================
 
 def search_pdb_rcsb(keyword: str, limit: int = 50) -> List[Dict]:
+    """Search RCSB PDB database"""
     try:
         url = "https://search.rcsb.org/rcsbsearch/v2/query"
         query = {
@@ -148,6 +149,7 @@ def search_pdb_rcsb(keyword: str, limit: int = 50) -> List[Dict]:
         return []
 
 def search_uniprot_for_pdb(protein_name: str, organism: str = "") -> List[Dict]:
+    """Search UniProt for PDB structures"""
     try:
         query = f"{protein_name}" + (f" AND organism:{organism}" if organism else "")
         params = {"query": query, "format": "json", "size": 50, "fields": "accession,protein_name,xref_pdb,organism_name"}
@@ -194,35 +196,46 @@ class PDBWrapper:
             self.structure = self.parser.get_structure(self.pdb_path.stem, str(self.pdb_path))
             self.header = self.parser.get_header()
             return True
-        except Exception: return False
+        except Exception: 
+            return False
 
     def get_available_chains(self) -> list:
-        if not self.structure: return []
-        try: return sorted([chain.id for chain in self.structure[0]])
-        except Exception: return []
+        if not self.structure: 
+            return []
+        try: 
+            return sorted([chain.id for chain in self.structure[0]])
+        except Exception: 
+            return []
 
     def get_best_chain(self, requested_chain: str) -> Optional[str]:
         chains = self.get_available_chains()
-        if requested_chain in chains: return requested_chain
-        if chains: return chains[0]
+        if requested_chain in chains: 
+            return requested_chain
+        if chains: 
+            return chains[0]
         return None
 
     def get_coordinates(self, chain_id="A") -> Optional[np.ndarray]:
-        if not self.structure or not chain_id: return None
+        if not self.structure or not chain_id: 
+            return None
         try:
             coords = [res["CA"].get_coord() for res in self.structure[0][chain_id] if "CA" in res]
             return np.array(coords, dtype=float) if coords else None
-        except Exception: return None
+        except Exception: 
+            return None
 
     def get_sequence(self, chain_id="A") -> Optional[str]:
-        if not self.structure or not chain_id: return None
+        if not self.structure or not chain_id: 
+            return None
         try:
             seq = []
             for residue in self.structure[0][chain_id]:
-                if residue.id[0] != " ": continue # Skip heteroatoms (water, drugs)
+                if residue.id[0] != " ": 
+                    continue
                 seq.append(THREE_TO_ONE.get(residue.get_resname(), "X"))
             return "".join(seq) if seq else None
-        except Exception: return None
+        except Exception: 
+            return None
         
     def get_experimental_metadata(self, chain_id="A"):
         resolution = self.header.get("resolution", np.nan)
@@ -230,7 +243,8 @@ class PDBWrapper:
         try:
             if self.structure and chain_id:
                 b_factors = [res["CA"].get_bfactor() for res in self.structure[0][chain_id] if "CA" in res]
-        except Exception: pass
+        except Exception: 
+            pass
         return {"resolution": resolution, "mean_b_factor": np.mean(b_factors) if b_factors else np.nan}
 
 # ==================================================
@@ -238,9 +252,12 @@ class PDBWrapper:
 # ==================================================
 
 def calculate_rmsd(coords1: np.ndarray, coords2: np.ndarray) -> Optional[float]:
-    if coords1 is None or coords2 is None or coords1.shape != coords2.shape: return None
-    try: return float(np.sqrt(np.mean(np.sum((coords1 - coords2) ** 2, axis=1))))
-    except Exception: return None
+    if coords1 is None or coords2 is None or coords1.shape != coords2.shape: 
+        return None
+    try: 
+        return float(np.sqrt(np.mean(np.sum((coords1 - coords2) ** 2, axis=1))))
+    except Exception: 
+        return None
 
 def calculate_distance_matrix(coords: np.ndarray) -> np.ndarray:
     return cdist(coords, coords, metric="euclidean")
@@ -250,17 +267,21 @@ def distance_matrix_correlation(dm1: np.ndarray, dm2: np.ndarray) -> float:
         flat1, flat2 = dm1[np.triu_indices_from(dm1, k=1)], dm2[np.triu_indices_from(dm2, k=1)]
         corr = np.corrcoef(flat1, flat2)[0, 1]
         return float(corr) if not np.isnan(corr) else 0.0
-    except Exception: return 0.0
+    except Exception: 
+        return 0.0
 
 def calculate_sequence_identity(seqA: str, seqB: str) -> Tuple[float, int]:
     try:
-        if not seqA or not seqB or str(seqA) == "None" or str(seqB) == "None": return 0.0, 0
+        if not seqA or not seqB or str(seqA) == "None" or str(seqB) == "None": 
+            return 0.0, 0
         alns = pairwise2.align.globalxx(seqA, seqB, one_alignment_only=True)
-        if not alns: return 0.0, 0
+        if not alns: 
+            return 0.0, 0
         a = alns[0]
         matches = sum(x == y for x, y in zip(a.seqA, a.seqB))
         return float(matches / max(len(seqA), len(seqB))), len(a.seqA)
-    except Exception: return 0.0, 0
+    except Exception: 
+        return 0.0, 0
 
 def download_pdb_by_id(pdb_id: str, out_path: Path) -> bool:
     try:
@@ -268,40 +289,56 @@ def download_pdb_by_id(pdb_id: str, out_path: Path) -> bool:
         r.raise_for_status()
         out_path.write_text(r.text)
         return True
-    except Exception: return False
+    except Exception: 
+        return False
 
 def get_advanced_physchem_properties(seq: str) -> Dict[str, float]:
     default_props = {"mw_kda": np.nan, "pi": np.nan, "instability": np.nan, "aromaticity": np.nan, "gravy": np.nan, "extinction_coeff": np.nan}
-    if not seq or str(seq) == "None": return default_props
+    if not seq or str(seq) == "None": 
+        return default_props
     
     clean_seq = re.sub(r'[^ACDEFGHIKLMNPQRSTVWY]', '', seq.upper())
-    if len(clean_seq) < 2: return default_props
+    if len(clean_seq) < 2: 
+        return default_props
     
     try:
         params = ProtParam.ProteinAnalysis(clean_seq)
         pi = np.nan
-        try: pi = IsoelectricPoint(clean_seq).pH()
-        except Exception: pi = params.isoelectric_point()
+        try: 
+            pi = IsoelectricPoint(clean_seq).pH()
+        except Exception: 
+            pi = params.isoelectric_point()
         
         return {
-            "mw_kda": float(params.molecular_weight() / 1000), "pi": float(pi), "instability": float(params.instability_index()),
-            "aromaticity": float(params.aromaticity()), "gravy": float(params.gravy()), "extinction_coeff": float(params.molar_extinction_coefficient()[0])
+            "mw_kda": float(params.molecular_weight() / 1000), 
+            "pi": float(pi), 
+            "instability": float(params.instability_index()),
+            "aromaticity": float(params.aromaticity()), 
+            "gravy": float(params.gravy()), 
+            "extinction_coeff": float(params.molar_extinction_coefficient()[0])
         }
-    except Exception: return default_props
+    except Exception: 
+        return default_props
 
 def classify_confidence_level(score: float) -> Tuple[str, str]:
-    if score >= DIAGNOSTIC_THRESHOLDS["Identical"]: return "IDENTICAL MATCH", "alert-high"
-    elif score >= DIAGNOSTIC_THRESHOLDS["Highly_Similar"]: return "HIGHLY SIMILAR", "alert-high"
-    elif score >= DIAGNOSTIC_THRESHOLDS["Moderately_Similar"]: return "MODERATELY SIMILAR", "alert-medium"
-    else: return "WEAKLY SIMILAR", "alert-low"
+    if score >= DIAGNOSTIC_THRESHOLDS["Identical"]: 
+        return "IDENTICAL MATCH", "alert-high"
+    elif score >= DIAGNOSTIC_THRESHOLDS["Highly_Similar"]: 
+        return "HIGHLY SIMILAR", "alert-high"
+    elif score >= DIAGNOSTIC_THRESHOLDS["Moderately_Similar"]: 
+        return "MODERATELY SIMILAR", "alert-medium"
+    else: 
+        return "WEAKLY SIMILAR", "alert-low"
 
 # ==================================================
 # 5. DATABASE PIPELINE
 # ==================================================
 @st.cache_data
 def load_reference_csv() -> pd.DataFrame:
-    try: return pd.read_csv("data/known_capsule_proteins.csv")
-    except FileNotFoundError: return pd.DataFrame(columns=["PDB_ID", "Organism", "Gene_Name", "Function", "Protein_Family", "Structure_Type"])
+    try: 
+        return pd.read_csv("data/known_capsule_proteins.csv")
+    except FileNotFoundError: 
+        return pd.DataFrame(columns=["PDB_ID", "Organism", "Gene_Name", "Function", "Protein_Family", "Structure_Type"])
 
 REFERENCE_DF = load_reference_csv()
 
@@ -311,16 +348,19 @@ def build_database_from_reference_pdb_ids(db_dir: Path, pdb_ids: list):
     progress_bar = st.progress(0)
     for i, pid in enumerate(pdb_ids):
         out = db_dir / f"{pid}.pdb"
-        if out.exists() or download_pdb_by_id(pid, out): downloaded.append(pid)
+        if out.exists() or download_pdb_by_id(pid, out): 
+            downloaded.append(pid)
         progress_bar.progress((i + 1) / len(pdb_ids))
     return downloaded
 
 def run_comprehensive_diagnostic(query_pdb: Path, db_dir: Path, chain_id: str) -> Tuple[pd.DataFrame, Dict]:
     qp = PDBWrapper(str(query_pdb))
-    if not qp.parse(): return pd.DataFrame(), {"status": "error", "message": "Failed to parse query PDB"}
+    if not qp.parse(): 
+        return pd.DataFrame(), {"status": "error", "message": "Failed to parse query PDB"}
     
     q_chain = qp.get_best_chain(chain_id)
-    if not q_chain: return pd.DataFrame(), {"status": "error", "message": f"No valid chains found in query PDB."}
+    if not q_chain: 
+        return pd.DataFrame(), {"status": "error", "message": f"No valid chains found in query PDB."}
     
     qcoords, qseq = qp.get_coordinates(q_chain), qp.get_sequence(q_chain)
     qdm = calculate_distance_matrix(qcoords) if qcoords is not None else None
@@ -334,21 +374,26 @@ def run_comprehensive_diagnostic(query_pdb: Path, db_dir: Path, chain_id: str) -
     for idx, pdb_file in enumerate(sorted(db_dir.glob("*.pdb"))):
         progress_bar.progress((idx + 1) / total_files)
         target_id = pdb_file.stem.upper()
-        if target_id == query_pdb.stem.upper(): continue
+        if target_id == query_pdb.stem.upper(): 
+            continue
         
         dp = PDBWrapper(str(pdb_file))
-        if not dp.parse(): continue
+        if not dp.parse(): 
+            continue
         
         d_chain = dp.get_best_chain(q_chain)
-        if not d_chain: continue
+        if not d_chain: 
+            continue
         
         dcoords, dseq = dp.get_coordinates(d_chain), dp.get_sequence(d_chain)
-        if dcoords is None or not dseq: continue
+        if dcoords is None or not dseq: 
+            continue
         
         rmsd_val, r_score = np.nan, 0.0
         if qcoords is not None and len(qcoords) == len(dcoords):
             rmsd_val = calculate_rmsd(qcoords, dcoords)
-            if rmsd_val is not None: r_score = max(0.0, 1.0 - (rmsd_val / 10.0))
+            if rmsd_val is not None: 
+                r_score = max(0.0, 1.0 - (rmsd_val / 10.0))
         
         s_score, aligned_length = calculate_sequence_identity(qseq, dseq)
         
@@ -380,7 +425,8 @@ def run_comprehensive_diagnostic(query_pdb: Path, db_dir: Path, chain_id: str) -
 
 def predict_biological_function(results_df: pd.DataFrame) -> dict:
     top_3 = results_df.head(3).dropna(subset=['Protein_Family', 'Structure_Type', 'Function'])
-    if top_3.empty: return {"family": "Unknown", "structure": "Unknown", "function": "Unknown", "confidence": "Low"}
+    if top_3.empty: 
+        return {"family": "Unknown", "structure": "Unknown", "function": "Unknown", "confidence": "Low"}
     return {"family": top_3['Protein_Family'].mode()[0], "structure": top_3['Structure_Type'].mode()[0], "function": top_3['Function'].mode()[0], "confidence": "High" if top_3['Protein_Family'].nunique() == 1 else "Moderate"}
 
 # ==================================================
@@ -391,7 +437,8 @@ def generate_alignment_visualization(seqA: str, seqB: str, blocksize: int = 60) 
         return "<p style='color:#ff3333;'>Alignment error: One or both sequences are unavailable.</p>"
     try:
         alns = pairwise2.align.globalxx(seqA, seqB, one_alignment_only=True)
-        if not alns: return "<p style='color:#ff3333;'>No alignment found</p>"
+        if not alns: 
+            return "<p style='color:#ff3333;'>No alignment found</p>"
         a = alns[0]
         
         html = '<div class="seq-align-box">\n'
@@ -402,7 +449,8 @@ def generate_alignment_visualization(seqA: str, seqB: str, blocksize: int = 60) 
             html += f"<span style='color:#ff3333; font-weight:bold;'>Target:</span> {a.seqB[i:i+blocksize]}\n\n"
         html += '</div>'
         return html
-    except Exception as e: return f"<p style='color:#ff3333;'>Error: {str(e)}</p>"
+    except Exception as e: 
+        return f"<p style='color:#ff3333;'>Error: {str(e)}</p>"
 
 def render_3d_structure(pdb_content: str):
     try:
@@ -412,7 +460,8 @@ def render_3d_structure(pdb_content: str):
         view.setBackgroundColor('#000000')
         view.zoomTo()
         return view
-    except Exception: return None
+    except Exception: 
+        return None
 
 # ==================================================
 # 7. APPLICATION UI
@@ -436,7 +485,8 @@ with st.sidebar:
     st.subheader("Option 1: Local CSV Database")
     if st.button("📥 Sync Local CSV Database", use_container_width=True):
         with st.spinner("Syncing local CSV structures..."):
-            for f in db_dir.glob("*.pdb"): f.unlink()
+            for f in db_dir.glob("*.pdb"): 
+                f.unlink()
             d = build_database_from_reference_pdb_ids(db_dir, REFERENCE_DF["PDB_ID"].dropna().astype(str).tolist())
             st.markdown(f'<div class="success-box">✅ Local DB: {len(d)} structures</div>', unsafe_allow_html=True)
     
@@ -451,8 +501,10 @@ with st.sidebar:
                 results = search_pdb_rcsb(web_search_term, 20) if web_search_type == "Keyword Search" else search_uniprot_for_pdb(web_search_term, "")
                 if results:
                     st.session_state['web_results'] = results
-                else: st.warning("⚠️ No results found")
-        else: st.warning("⚠️ Enter a search term")
+                else: 
+                    st.warning("⚠️ No results found")
+        else: 
+            st.warning("⚠️ Enter a search term")
         
     if 'web_results' in st.session_state:
         st.dataframe(pd.DataFrame(st.session_state['web_results']), use_container_width=True, hide_index=True)
@@ -462,7 +514,8 @@ with st.sidebar:
                 added = 0
                 for pid in pdb_ids:
                     out = db_dir / f"{pid}.pdb"
-                    if not out.exists() and download_pdb_by_id(pid, out): added += 1
+                    if not out.exists() and download_pdb_by_id(pid, out): 
+                        added += 1
                 st.success(f"✅ Added {added} structures to database")
     
     st.divider()
@@ -500,7 +553,8 @@ with tab1:
                     query_pdb_path = query_dir / f"{pdb_id}.pdb"
                     if not query_pdb_path.exists():
                         with st.spinner(f"Downloading {pdb_id}..."):
-                            if not download_pdb_by_id(pdb_id, query_pdb_path): query_pdb_path = None
+                            if not download_pdb_by_id(pdb_id, query_pdb_path): 
+                                query_pdb_path = None
                 elif query_mode == "Local File Upload" and uploaded_query:
                     query_pdb_path = query_dir / uploaded_query.name
                     query_pdb_path.write_bytes(uploaded_query.getvalue())
@@ -529,15 +583,19 @@ with tab1:
                         confidence, alert_class = classify_confidence_level(top_hit["Consensus_Score"])
                         prediction = predict_biological_function(results_df)
                         
-                        if diagnostics.get("chain_warning"): st.warning(f"⚠️ {diagnostics['chain_warning']}")
+                        if diagnostics.get("chain_warning"): 
+                            st.warning(f"⚠️ {diagnostics['chain_warning']}")
                         
                         st.markdown(f'<div class="{alert_class}">🧬 CONSENSUS SCORE: {top_hit["Consensus_Score"]:.3f}/1.000 | {confidence}</div>', unsafe_allow_html=True)
                         
                         st.markdown("### 📊 Individual Method Scores (Top Hit)")
                         method_col1, method_col2, method_col3 = st.columns(3)
-                        with method_col1: st.markdown(f'<div class="method-box"><b>METHOD 1: RMSD</b><br>Score: {top_hit["RMSD_Score"]:.3f}<br>Value: {top_hit["RMSD_Å"]:.2f} Å</div>', unsafe_allow_html=True)
-                        with method_col2: st.markdown(f'<div class="method-box"><b>METHOD 2: SEQUENCE</b><br>Score: {top_hit["Seq_Score"]:.3f}<br>Identity: {top_hit["Seq_Identity_%"]:.1f}%</div>', unsafe_allow_html=True)
-                        with method_col3: st.markdown(f'<div class="method-box"><b>METHOD 3: TOPOLOGY</b><br>Score: {top_hit["DM_Correlation"]:.3f}<br>Corr: {top_hit["DM_Correlation"]:.3f}</div>', unsafe_allow_html=True)
+                        with method_col1: 
+                            st.markdown(f'<div class="method-box"><b>METHOD 1: RMSD</b><br>Score: {top_hit["RMSD_Score"]:.3f}<br>Value: {top_hit["RMSD_Å"]:.2f} Å</div>', unsafe_allow_html=True)
+                        with method_col2: 
+                            st.markdown(f'<div class="method-box"><b>METHOD 2: SEQUENCE</b><br>Score: {top_hit["Seq_Score"]:.3f}<br>Identity: {top_hit["Seq_Identity_%"]:.1f}%</div>', unsafe_allow_html=True)
+                        with method_col3: 
+                            st.markdown(f'<div class="method-box"><b>METHOD 3: TOPOLOGY</b><br>Score: {top_hit["DM_Correlation"]:.3f}<br>Corr: {top_hit["DM_Correlation"]:.3f}</div>', unsafe_allow_html=True)
                         
                         with st.container(border=True):
                             st.markdown("### Biological Annotation")
@@ -578,7 +636,8 @@ with tab2:
             st.markdown(f"### Interactive 3D Query Topology (Chain {st.session_state.get('resolved_chain', 'A')})")
             with st.container(border=True):
                 view = render_3d_structure(st.session_state['query_pdb_content'])
-                if view: components.html(view._make_html(), height=480)
+                if view: 
+                    components.html(view._make_html(), height=480)
         with colseq:
             if 'results_df' in st.session_state and not st.session_state['results_df'].empty:
                 top = st.session_state['results_df'].iloc[0]
@@ -599,8 +658,11 @@ with tab3:
     st.subheader("Database Population Analytics")
     if not REFERENCE_DF.empty:
         c1, c2 = st.columns(2)
-        with c1: st.plotly_chart(px.pie(REFERENCE_DF, names="Organism", title="Pathogen Representation", hole=0.3, template="plotly_dark"), use_container_width=True)
-        with c2: st.plotly_chart(px.bar(REFERENCE_DF["Protein_Family"].value_counts().reset_index(), x="Protein_Family", y="count", title="Domain Families", template="plotly_dark"), use_container_width=True)
+        with c1: 
+            st.plotly_chart(px.pie(REFERENCE_DF, names="Organism", title="Pathogen Representation", hole=0.3, template="plotly_dark"), use_container_width=True)
+        with c2: 
+            st.plotly_chart(px.bar(REFERENCE_DF["Protein_Family"].value_counts().reset_index(), x="Protein_Family", y="count", title="Domain Families", template="plotly_dark"), use_container_width=True)
+        st.dataframe(REFERENCE_DF, use_container_width=True, hide_index=True)
 
 # ==================================================
 # TAB 4: ALGORITHM DETAILS
@@ -611,12 +673,15 @@ with tab4:
     ### Method 1: RMSD-Based Structural Superposition
     - Root Mean Square Deviation of alpha-carbon backbone atoms
     - **Formula:** `Score = max(0, 1 - RMSD/10)`
+    
     ### Method 2: Sequence Identity (Needleman-Wunsch)
     - Evolutionary primary structure conservation
     - **Formula:** `Score = Matching_Residues / max(Seq_A, Seq_B)`
+    
     ### Method 3: Distance Matrix Topology Correlation
     - Pearson correlation of pairwise Euclidean distances
     - **Formula:** `Score = (Correlation + 1) / 2`
+    
     ### Consensus Scoring:
     ```text
     Consensus = (0.33 × RMSD_Score) + (0.33 × Seq_Score) + (0.34 × DM_Score)
