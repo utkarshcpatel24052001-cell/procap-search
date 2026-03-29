@@ -12,7 +12,7 @@ pinned: false
 
 # ProCap Search — Protein Capsule Structure Search Pipeline
 
-**Live App:** https://procap-search-XXXXX.streamlit.app/
+**Live App:** https://procap-search-6q7sgrsvhydckpi2hdpb7g.streamlit.app/
 
 ProCap Search is a high-performance **protein structure search tool** for bacterial pathogen capsule identification. It benchmarks **3 independent structure-search methods** (RMSD superposition, sequence alignment, distance-matrix topology) and combines them into a **consensus scoring system** to prioritize candidate proteins for vaccine and therapeutic development.
 
